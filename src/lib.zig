@@ -4,6 +4,7 @@ pub const cfg = @import("cfg.zig");
 pub const ast = @import("ast.zig");
 pub const structure = @import("structure.zig");
 pub const printer = @import("printer.zig");
+pub const expr = @import("expr.zig");
 
 pub const CompiledModule = types.CompiledModule;
 pub const deserialize = binary.deserialize;

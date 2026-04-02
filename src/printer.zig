@@ -2,6 +2,7 @@ const std = @import("std");
 const types = @import("types.zig");
 const cfg_mod = @import("cfg.zig");
 const ast = @import("ast.zig");
+const expr = @import("expr.zig");
 const Allocator = std.mem.Allocator;
 
 const Writer = std.ArrayList(u8);
@@ -217,7 +218,8 @@ fn printFunction(
     try out.appendSlice(allocator, " {\n");
 
     if (structured_opt) |node| {
-        try printNode(out, allocator, module, cfg_opt.?, node, 2);
+        const param_count: u16 = @intCast(param_sig.tokens.len);
+        try printNode(out, allocator, module, cfg_opt.?, fd.code.?.code, param_count, node, 2);
     } else if (fd.code) |code_unit| {
         // Fallback: print raw bytecode
         for (code_unit.code, 0..) |instr, i| {
@@ -237,6 +239,8 @@ fn printNode(
     allocator: Allocator,
     module: *const types.CompiledModule,
     cfg: *const cfg_mod.Cfg,
+    code: []const types.Bytecode,
+    param_count: u16,
     node: *const ast.Node,
     indent: usize,
 ) !void {
@@ -244,63 +248,70 @@ fn printNode(
         .empty => {},
         .block => |block_id| {
             const block = cfg.blocks[block_id];
-            // Don't print the branch instruction itself (it's represented structurally)
+            // Don't render the branch instruction (represented structurally)
             const end = switch (block.terminator) {
-                .branch => block.end - 1,
+                .branch => if (block.end > block.start) block.end - 1 else block.end,
                 else => block.end,
             };
-            // Find the function this block belongs to (for instruction context)
-            for (block.start..end) |i| {
+            if (end <= block.start) return;
+            const stmts = expr.renderBlock(allocator, module, code, block.start, end, param_count) catch return;
+            for (stmts) |stmt| {
                 try writeIndent(out, allocator, indent);
-                try writeBytecodeInstr(out, allocator, module, &cfg.blocks[0].id); // placeholder
-                _ = i;
-            }
-            // Actually print the instructions
-            // Reset and do it properly
-            out.items.len -= (end - block.start) * 0; // nop
-
-            for (block.start..end) |offset| {
-                // Look up instruction from... we need the code array
-                // The cfg doesn't store instructions directly, only block boundaries
-                // We need to pass the code array through
-                try writeIndent(out, allocator, indent);
-                try out.appendSlice(allocator, "// offset ");
-                try writeUsize(out, allocator, offset);
-                try out.append(allocator, '\n');
+                try out.appendSlice(allocator, stmt);
+                try out.appendSlice(allocator, ";\n");
             }
         },
         .seq => |nodes| {
             for (nodes) |n| {
-                try printNode(out, allocator, module, cfg, n, indent);
+                try printNode(out, allocator, module, cfg, code, param_count, n, indent);
             }
         },
         .if_else => |ie| {
+            // Render condition block statements, last value on stack is the condition
+            const cond_block = cfg.blocks[ie.cond_block];
+            const cond_end = if (cond_block.end > cond_block.start) cond_block.end - 1 else cond_block.end;
+            if (cond_end > cond_block.start) {
+                const pre_stmts = expr.renderBlock(allocator, module, code, cond_block.start, cond_end, param_count) catch &.{};
+                for (pre_stmts) |stmt| {
+                    try writeIndent(out, allocator, indent);
+                    try out.appendSlice(allocator, stmt);
+                    try out.appendSlice(allocator, ";\n");
+                }
+            }
+            // The condition itself
+            const cond_stmts = expr.renderBlock(allocator, module, code, cond_end, cond_block.end, param_count) catch &.{};
+            const cond_expr = if (cond_stmts.len > 0) cond_stmts[cond_stmts.len - 1] else "/* cond */";
+
             try writeIndent(out, allocator, indent);
-            try out.appendSlice(allocator, "if (/* block ");
-            try writeUsize(out, allocator, ie.cond_block);
-            try out.appendSlice(allocator, " */) {\n");
-            try printNode(out, allocator, module, cfg, ie.then_branch, indent + 1);
+            try out.appendSlice(allocator, "if (");
+            try out.appendSlice(allocator, cond_expr);
+            try out.appendSlice(allocator, ") {\n");
+            try printNode(out, allocator, module, cfg, code, param_count, ie.then_branch, indent + 1);
             if (ie.else_branch) |eb| {
                 try writeIndent(out, allocator, indent);
                 try out.appendSlice(allocator, "} else {\n");
-                try printNode(out, allocator, module, cfg, eb, indent + 1);
+                try printNode(out, allocator, module, cfg, code, param_count, eb, indent + 1);
             }
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "}\n");
         },
         .while_loop => |wl| {
+            const cond_block = cfg.blocks[wl.cond_block];
+            const cond_stmts = expr.renderBlock(allocator, module, code, cond_block.start, cond_block.end, param_count) catch &.{};
+            const cond_expr = if (cond_stmts.len > 0) cond_stmts[cond_stmts.len - 1] else "true";
+
             try writeIndent(out, allocator, indent);
-            try out.appendSlice(allocator, "while (/* block ");
-            try writeUsize(out, allocator, wl.cond_block);
-            try out.appendSlice(allocator, " */) {\n");
-            try printNode(out, allocator, module, cfg, wl.body, indent + 1);
+            try out.appendSlice(allocator, "while (");
+            try out.appendSlice(allocator, cond_expr);
+            try out.appendSlice(allocator, ") {\n");
+            try printNode(out, allocator, module, cfg, code, param_count, wl.body, indent + 1);
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "}\n");
         },
         .loop_ => |lp| {
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "loop {\n");
-            try printNode(out, allocator, module, cfg, lp.body, indent + 1);
+            try printNode(out, allocator, module, cfg, code, param_count, lp.body, indent + 1);
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "}\n");
         },
