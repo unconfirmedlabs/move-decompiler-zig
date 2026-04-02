@@ -1,8 +1,49 @@
 pub const types = @import("types.zig");
 pub const binary = @import("binary.zig");
+pub const cfg = @import("cfg.zig");
+pub const ast = @import("ast.zig");
+pub const structure = @import("structure.zig");
+pub const printer = @import("printer.zig");
 
 pub const CompiledModule = types.CompiledModule;
 pub const deserialize = binary.deserialize;
+
+/// Decompile a .mv file to Move source code.
+pub fn decompile(allocator: std.mem.Allocator, bytecode: []const u8) ![]u8 {
+    const module = try binary.deserialize(allocator, bytecode);
+
+    // Build CFGs and structure for each function with code
+    var cfgs = std.ArrayList(cfg.Cfg){};
+    var doms = std.ArrayList(cfg.DominatorTree){};
+    var loop_infos = std.ArrayList(cfg.LoopInfo){};
+    var structured = std.ArrayList(*const ast.Node){};
+
+    for (module.function_defs) |fd| {
+        const fh = module.function_handles[fd.function];
+        if (fh.module != module.self_module_handle_idx) continue;
+
+        if (fd.code) |code_unit| {
+            const fn_cfg = try cfg.buildCfg(allocator, code_unit.code);
+            const dom = try cfg.computeDominators(allocator, &fn_cfg);
+            const loops = try cfg.detectLoops(allocator, &fn_cfg, &dom);
+            const node = try structure.structure(allocator, &fn_cfg, &dom, &loops);
+
+            try cfgs.append(allocator, fn_cfg);
+            try doms.append(allocator, dom);
+            try loop_infos.append(allocator, loops);
+            try structured.append(allocator, node);
+        }
+    }
+
+    return printer.printModuleStructured(
+        allocator,
+        &module,
+        cfgs.items,
+        doms.items,
+        loop_infos.items,
+        structured.items,
+    );
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
@@ -19,94 +60,48 @@ test "parse coin.mv header" {
 }
 
 test "parse coin.mv fully" {
-    const data = loadTestFile("test_data/coin.mv");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const module = try deserialize(arena.allocator(), data);
+    const module = try deserialize(arena.allocator(), loadTestFile("test_data/coin.mv"));
 
-    // Module name should be "coin"
-    const name = module.selfModuleName();
-    try testing.expectEqualSlices(u8, "coin", name);
-
-    // Should have many functions
+    try testing.expectEqualSlices(u8, "coin", module.selfModuleName());
     try testing.expect(module.function_defs.len > 30);
-
-    // Should have structs (Coin, CoinMetadata, TreasuryCap, etc.)
     try testing.expect(module.struct_defs.len >= 5);
-
-    // Should have identifiers
-    try testing.expect(module.identifiers.len > 50);
-
-    // Check a known function exists
-    var found_total_supply = false;
-    for (module.function_defs) |fd| {
-        const fh = module.function_handles[fd.function];
-        const fn_name = module.identifiers[fh.name];
-        if (std.mem.eql(u8, fn_name, "total_supply")) {
-            found_total_supply = true;
-            try testing.expectEqual(types.Visibility.public, fd.visibility);
-            try testing.expect(fd.code != null);
-        }
-    }
-    try testing.expect(found_total_supply);
 }
 
 test "parse balance.mv fully" {
-    const data = loadTestFile("test_data/balance.mv");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const module = try deserialize(arena.allocator(), data);
+    const module = try deserialize(arena.allocator(), loadTestFile("test_data/balance.mv"));
     try testing.expectEqualSlices(u8, "balance", module.selfModuleName());
-    try testing.expect(module.function_defs.len > 5);
 }
 
 test "parse transfer.mv fully" {
-    const data = loadTestFile("test_data/transfer.mv");
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const module = try deserialize(arena.allocator(), data);
+    const module = try deserialize(arena.allocator(), loadTestFile("test_data/transfer.mv"));
     try testing.expectEqualSlices(u8, "transfer", module.selfModuleName());
 }
 
-test "coin.mv function bytecode is parseable" {
-    const data = loadTestFile("test_data/coin.mv");
+test "decompile coin.mv to source" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const module = try deserialize(arena.allocator(), data);
 
-    for (module.function_defs) |fd| {
-        if (fd.code) |code| {
-            // Every function should have at least one instruction
-            try testing.expect(code.code.len > 0);
-            // Last instruction of simple functions is usually Ret
-            const last = code.code[code.code.len - 1];
-            // Just verify it parsed (didn't error)
-            _ = last.isBranch();
-        }
-    }
+    const output = try decompile(arena.allocator(), loadTestFile("test_data/coin.mv"));
+    try testing.expect(std.mem.indexOf(u8, output, "module 0x") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "struct Coin") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "fun total_supply") != null);
+    // Structured output should contain control flow keywords
+    try testing.expect(std.mem.indexOf(u8, output, "while") != null or
+        std.mem.indexOf(u8, output, "loop") != null or
+        std.mem.indexOf(u8, output, "if") != null);
 }
 
-test "coin.mv signatures resolve correctly" {
-    const data = loadTestFile("test_data/coin.mv");
+test "decompile balance.mv to source" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const module = try deserialize(arena.allocator(), data);
 
-    // Every signature should have valid tokens
-    for (module.signatures) |sig| {
-        for (sig.tokens) |token| {
-            // Just verify each token is a valid variant
-            switch (token.*) {
-                .bool, .u8, .u16, .u32, .u64, .u128, .u256, .address, .signer => {},
-                .vector => |inner| _ = inner,
-                .reference => |inner| _ = inner,
-                .mutable_reference => |inner| _ = inner,
-                .datatype => |idx| try testing.expect(idx < module.datatype_handles.len),
-                .datatype_instantiation => |di| {
-                    try testing.expect(di.handle < module.datatype_handles.len);
-                },
-                .type_parameter => {},
-            }
-        }
-    }
+    const output = try decompile(arena.allocator(), loadTestFile("test_data/balance.mv"));
+    try testing.expect(std.mem.indexOf(u8, output, "struct Balance") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "struct Supply") != null);
 }

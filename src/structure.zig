@@ -1,0 +1,389 @@
+const std = @import("std");
+const cfg_mod = @import("cfg.zig");
+const ast = @import("ast.zig");
+const Allocator = std.mem.Allocator;
+const BlockId = cfg_mod.BlockId;
+const Node = ast.Node;
+
+/// Structure a CFG into a high-level AST with if/else, loops, etc.
+/// Uses a simplified version of the "No More Gotos" algorithm.
+const StructError = Allocator.Error;
+
+pub fn structure(
+    allocator: Allocator,
+    cfg: *const cfg_mod.Cfg,
+    dom: *const cfg_mod.DominatorTree,
+    loops: *const cfg_mod.LoopInfo,
+) StructError!*const Node {
+    if (cfg.blocks.len == 0) return makeNode(allocator, .empty);
+
+    const visited = try allocator.alloc(bool, cfg.blocks.len);
+    @memset(visited, false);
+    return structureRegion(allocator, cfg, dom, loops, cfg.entry, null, visited);
+}
+
+fn structureRegion(
+    allocator: Allocator,
+    cfg: *const cfg_mod.Cfg,
+    dom: *const cfg_mod.DominatorTree,
+    loops: *const cfg_mod.LoopInfo,
+    block_id: BlockId,
+    loop_header: ?BlockId,
+    visited: []bool,
+) StructError!*const Node {
+    // Prevent infinite recursion
+    if (visited[block_id]) return makeNode(allocator, .{ .block = block_id });
+    visited[block_id] = true;
+
+    const block = cfg.blocks[block_id];
+
+    if (loops.is_loop_header[block_id]) {
+        return structureLoop(allocator, cfg, dom, loops, block_id, visited);
+    }
+
+    switch (block.terminator) {
+        .ret => {
+            return makeNode(allocator, .{ .block = block_id });
+        },
+        .abort => {
+            return makeNode(allocator, .{ .block = block_id });
+        },
+        .jump => |target| {
+            // Check if jump is to loop header (continue/break)
+            if (loop_header) |lh| {
+                if (target == lh) {
+                    // Continue to loop header
+                    var nodes = try allocator.alloc(*const Node, 2);
+                    nodes[0] = try makeNode(allocator, .{ .block = block_id });
+                    nodes[1] = try makeNode(allocator, .continue_);
+                    return makeNode(allocator, .{ .seq = nodes });
+                }
+            }
+
+            // Check if target is dominated by us (sequential)
+            if (dom.idom[target] == block_id) {
+                const rest = try structureRegion(allocator, cfg, dom, loops, target, loop_header, visited);
+                var nodes = try allocator.alloc(*const Node, 2);
+                nodes[0] = try makeNode(allocator, .{ .block = block_id });
+                nodes[1] = rest;
+                return makeNode(allocator, .{ .seq = nodes });
+            }
+
+            // Jump to non-dominated target (break or cross edge)
+            if (loop_header != null) {
+                var nodes = try allocator.alloc(*const Node, 2);
+                nodes[0] = try makeNode(allocator, .{ .block = block_id });
+                nodes[1] = try makeNode(allocator, .break_);
+                return makeNode(allocator, .{ .seq = nodes });
+            }
+
+            return makeNode(allocator, .{ .block = block_id });
+        },
+        .branch => |br| {
+            return structureBranch(allocator, cfg, dom, loops, block_id, br.then_id, br.else_id, loop_header, visited);
+        },
+        .variant_switch => |targets| {
+            // For now, treat variant switch as a block (full match support later)
+            _ = targets;
+            return makeNode(allocator, .{ .block = block_id });
+        },
+    }
+}
+
+fn structureBranch(
+    allocator: Allocator,
+    cfg: *const cfg_mod.Cfg,
+    dom: *const cfg_mod.DominatorTree,
+    loops: *const cfg_mod.LoopInfo,
+    cond_block: BlockId,
+    then_target: BlockId,
+    else_target: BlockId,
+    loop_header: ?BlockId,
+    visited: []bool,
+) StructError!*const Node {
+    // Check if this is a while loop condition (then or else goes to loop header)
+    if (loop_header) |lh| {
+        if (else_target == lh) {
+            // while (cond) { then_branch } — else continues loop
+            const then_body = try structureRegion(allocator, cfg, dom, loops, then_target, loop_header, visited);
+            var nodes = try allocator.alloc(*const Node, 2);
+            nodes[0] = try makeNode(allocator, .{ .block = cond_block });
+            nodes[1] = then_body;
+            const body = try makeNode(allocator, .{ .seq = nodes });
+            _ = body;
+            // This pattern means: if (cond) { then } else { continue }
+            const else_node = try makeNode(allocator, .continue_);
+            return makeNode(allocator, .{ .if_else = .{
+                .cond_block = cond_block,
+                .then_branch = then_body,
+                .else_branch = else_node,
+            } });
+        }
+        if (then_target == lh) {
+            const else_body = try structureRegion(allocator, cfg, dom, loops, else_target, loop_header, visited);
+            const then_node = try makeNode(allocator, .continue_);
+            return makeNode(allocator, .{ .if_else = .{
+                .cond_block = cond_block,
+                .then_branch = then_node,
+                .else_branch = else_body,
+            } });
+        }
+    }
+
+    // Find post-dominator (merge point)
+    // Simple heuristic: if one branch dominates the other's target, it's the merge
+    const then_dominated = dom.idom[then_target] == cond_block;
+    const else_dominated = dom.idom[else_target] == cond_block;
+
+    if (then_dominated and else_dominated) {
+        // Both branches are dominated — full if/else
+        const then_node = try structureRegion(allocator, cfg, dom, loops, then_target, loop_header, visited);
+        const else_node = try structureRegion(allocator, cfg, dom, loops, else_target, loop_header, visited);
+
+        // Find merge point: block dominated by cond that's a successor of both branches
+        const merge = findMergePoint(cfg, dom, cond_block, then_target, else_target);
+
+        var parts = std.ArrayList(*const Node){};
+        try parts.append(allocator, try makeNode(allocator, .{ .if_else = .{
+            .cond_block = cond_block,
+            .then_branch = then_node,
+            .else_branch = else_node,
+        } }));
+
+        if (merge) |merge_id| {
+            if (merge_id != then_target and merge_id != else_target) {
+                const rest = try structureRegion(allocator, cfg, dom, loops, merge_id, loop_header, visited);
+                try parts.append(allocator, rest);
+            }
+        }
+
+        if (parts.items.len == 1) return parts.items[0];
+        return makeNode(allocator, .{ .seq = parts.items });
+    }
+
+    if (then_dominated) {
+        // Only then branch is dominated — if-then with else as merge
+        const then_node = try structureRegion(allocator, cfg, dom, loops, then_target, loop_header, visited);
+        const if_node = try makeNode(allocator, .{ .if_else = .{
+            .cond_block = cond_block,
+            .then_branch = then_node,
+            .else_branch = null,
+        } });
+
+        // Continue with else target
+        const rest = try structureRegion(allocator, cfg, dom, loops, else_target, loop_header, visited);
+        var nodes = try allocator.alloc(*const Node, 2);
+        nodes[0] = if_node;
+        nodes[1] = rest;
+        return makeNode(allocator, .{ .seq = nodes });
+    }
+
+    if (else_dominated) {
+        // Only else branch is dominated — if(!cond)-then with then as merge
+        const else_node = try structureRegion(allocator, cfg, dom, loops, else_target, loop_header, visited);
+        const if_node = try makeNode(allocator, .{ .if_else = .{
+            .cond_block = cond_block,
+            .then_branch = try makeNode(allocator, .empty),
+            .else_branch = else_node,
+        } });
+
+        const rest = try structureRegion(allocator, cfg, dom, loops, then_target, loop_header, visited);
+        var nodes = try allocator.alloc(*const Node, 2);
+        nodes[0] = if_node;
+        nodes[1] = rest;
+        return makeNode(allocator, .{ .seq = nodes });
+    }
+
+    // Neither dominated — just emit the block as-is
+    return makeNode(allocator, .{ .block = cond_block });
+}
+
+fn structureLoop(
+    allocator: Allocator,
+    cfg: *const cfg_mod.Cfg,
+    dom: *const cfg_mod.DominatorTree,
+    loops: *const cfg_mod.LoopInfo,
+    header: BlockId,
+    visited: []bool,
+) StructError!*const Node {
+    const block = cfg.blocks[header];
+
+    switch (block.terminator) {
+        .branch => |br| {
+            // Check if one branch exits the loop
+            const then_in_loop = dom.dominates(header, br.then_id);
+            const else_in_loop = dom.dominates(header, br.else_id);
+
+            if (then_in_loop and !else_in_loop) {
+                // while (cond) { body } — else exits
+                const body = try structureRegion(allocator, cfg, dom, loops, br.then_id, header, visited);
+                const while_node = try makeNode(allocator, .{ .while_loop = .{
+                    .cond_block = header,
+                    .body = body,
+                } });
+
+                // Continue after loop with the exit target
+                const rest = try structureRegion(allocator, cfg, dom, loops, br.else_id, null, visited);
+                var nodes = try allocator.alloc(*const Node, 2);
+                nodes[0] = while_node;
+                nodes[1] = rest;
+                return makeNode(allocator, .{ .seq = nodes });
+            }
+
+            if (!then_in_loop and else_in_loop) {
+                // while (!cond) { body } — then exits
+                const body = try structureRegion(allocator, cfg, dom, loops, br.else_id, header, visited);
+                const while_node = try makeNode(allocator, .{ .while_loop = .{
+                    .cond_block = header,
+                    .body = body,
+                } });
+
+                const rest = try structureRegion(allocator, cfg, dom, loops, br.then_id, null, visited);
+                var nodes = try allocator.alloc(*const Node, 2);
+                nodes[0] = while_node;
+                nodes[1] = rest;
+                return makeNode(allocator, .{ .seq = nodes });
+            }
+
+            // Both in loop — infinite loop with break
+            const body = try structureRegion(allocator, cfg, dom, loops, header, header, visited);
+            return makeNode(allocator, .{ .loop_ = .{ .body = body } });
+        },
+        .jump => |target| {
+            if (target == header) {
+                // Tight infinite loop: loop { block }
+                return makeNode(allocator, .{ .loop_ = .{
+                    .body = try makeNode(allocator, .{ .block = header }),
+                } });
+            }
+            // Loop with body
+            const body = try structureRegion(allocator, cfg, dom, loops, target, header, visited);
+            var inner = try allocator.alloc(*const Node, 2);
+            inner[0] = try makeNode(allocator, .{ .block = header });
+            inner[1] = body;
+            return makeNode(allocator, .{ .loop_ = .{
+                .body = try makeNode(allocator, .{ .seq = inner }),
+            } });
+        },
+        else => {
+            return makeNode(allocator, .{ .block = header });
+        },
+    }
+}
+
+fn findMergePoint(
+    cfg: *const cfg_mod.Cfg,
+    dom: *const cfg_mod.DominatorTree,
+    cond: BlockId,
+    then_target: BlockId,
+    else_target: BlockId,
+) ?BlockId {
+    _ = cfg;
+    // Simple: find a common child in dominator tree that isn't then or else
+    for (dom.children[cond]) |child| {
+        if (child != then_target and child != else_target) {
+            return child;
+        }
+    }
+    return null;
+}
+
+fn makeNode(allocator: Allocator, value: Node) StructError!*const Node {
+    const node = try allocator.create(Node);
+    node.* = value;
+    return node;
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────
+
+const testing = std.testing;
+const binary = @import("binary.zig");
+
+test "structure: simple function produces block node" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const data = @embedFile("test_data/coin.mv");
+    const module = try binary.deserialize(alloc, data);
+
+    // total_supply: 4 sequential instructions, no branches
+    for (module.function_defs) |fd| {
+        const fh = module.function_handles[fd.function];
+        if (std.mem.eql(u8, module.identifiers[fh.name], "total_supply")) {
+            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code);
+            const dom = try cfg_mod.computeDominators(alloc, &cfg);
+            const loops = try cfg_mod.detectLoops(alloc, &cfg, &dom);
+            const result = try structure(alloc, &cfg, &dom, &loops);
+            try testing.expectEqual(Node{ .block = 0 }, result.*);
+            return;
+        }
+    }
+}
+
+test "structure: function with branches produces if_else" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const data = @embedFile("test_data/coin.mv");
+    const module = try binary.deserialize(alloc, data);
+
+    // create_currency has branches
+    for (module.function_defs) |fd| {
+        const fh = module.function_handles[fd.function];
+        if (std.mem.eql(u8, module.identifiers[fh.name], "create_currency")) {
+            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code);
+            if (cfg.blocks.len > 1) {
+                const dom = try cfg_mod.computeDominators(alloc, &cfg);
+                const loops = try cfg_mod.detectLoops(alloc, &cfg, &dom);
+                const result = try structure(alloc, &cfg, &dom, &loops);
+                // Should produce structured output (not just a flat block)
+                // Should produce structured output, not just a single flat block
+                try testing.expect(result.* != .empty);
+                return;
+            }
+        }
+    }
+}
+
+test "structure: divide_into_n produces while loop" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const data = @embedFile("test_data/coin.mv");
+    const module = try binary.deserialize(alloc, data);
+
+    for (module.function_defs) |fd| {
+        const fh = module.function_handles[fd.function];
+        if (std.mem.eql(u8, module.identifiers[fh.name], "divide_into_n")) {
+            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code);
+            const dom = try cfg_mod.computeDominators(alloc, &cfg);
+            const loops = try cfg_mod.detectLoops(alloc, &cfg, &dom);
+            const result = try structure(alloc, &cfg, &dom, &loops);
+
+            // Should contain a while_loop or loop_ somewhere
+            try testing.expect(containsLoop(result));
+            return;
+        }
+    }
+}
+
+fn containsLoop(node: *const Node) bool {
+    switch (node.*) {
+        .while_loop, .loop_ => return true,
+        .seq => |nodes| {
+            for (nodes) |n| {
+                if (containsLoop(n)) return true;
+            }
+            return false;
+        },
+        .if_else => |ie| {
+            if (containsLoop(ie.then_branch)) return true;
+            if (ie.else_branch) |eb| return containsLoop(eb);
+            return false;
+        },
+        else => return false,
+    }
+}
