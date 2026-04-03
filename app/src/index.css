@@ -128,3 +128,28 @@
     @apply font-sans;
     }
 }
+
+/* Move syntax highlighting */
+.mv-keyword { color: var(--color-mv-keyword); }
+.mv-type { color: var(--color-mv-type); }
+.mv-ability { color: var(--color-mv-ability); }
+.mv-literal { color: var(--color-mv-literal); }
+.mv-string { color: var(--color-mv-string); }
+.mv-comment { color: var(--color-mv-comment); font-style: italic; }
+
+:root {
+  --color-mv-keyword: #a626a4;
+  --color-mv-type: #0184bc;
+  --color-mv-ability: #4078f2;
+  --color-mv-literal: #986801;
+  --color-mv-string: #50a14f;
+  --color-mv-comment: #a0a1a7;
+}
+.dark {
+  --color-mv-keyword: #c678dd;
+  --color-mv-type: #56b6c2;
+  --color-mv-ability: #61afef;
+  --color-mv-literal: #d19a66;
+  --color-mv-string: #98c379;
+  --color-mv-comment: #5c6370;
+}
