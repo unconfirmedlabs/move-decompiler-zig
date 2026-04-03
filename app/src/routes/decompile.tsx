@@ -3,6 +3,7 @@ import { useParams, Link } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
 import { fetchPackageModules } from "@/lib/sui";
 import { Button } from "@/components/ui/button";
+import { CodeBlock } from "@/components/code-block";
 
 interface DecompiledModule {
   name: string;
@@ -159,9 +160,7 @@ export function DecompilePage() {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <pre className="p-4 text-sm leading-relaxed font-mono whitespace-pre">
-            <code>{current.source}</code>
-          </pre>
+          <CodeBlock code={current.source} />
         </div>
       </div>
     </main>

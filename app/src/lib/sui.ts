@@ -5,6 +5,23 @@ export interface MoveModule {
   bytes: Uint8Array;
 }
 
+export async function validatePackage(
+  packageId: string,
+  signal?: AbortSignal
+): Promise<boolean> {
+  const query = `{ object(address: "${packageId}") { asMovePackage { modules { nodes { name } } } } }`;
+  const res = await fetch(GQL_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+    signal,
+  });
+  if (!res.ok) return false;
+  const json = await res.json();
+  const nodes = json.data?.object?.asMovePackage?.modules?.nodes;
+  return Array.isArray(nodes) && nodes.length > 0;
+}
+
 export async function fetchPackageModules(
   packageId: string
 ): Promise<MoveModule[]> {

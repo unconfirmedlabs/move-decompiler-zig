@@ -1,7 +1,9 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
+import { validatePackage } from "@/lib/sui";
 import { Button } from "@/components/ui/button";
+import { CodeBlock } from "@/components/code-block";
 
 interface DecompiledModule {
   name: string;
@@ -11,22 +13,49 @@ interface DecompiledModule {
 
 export function HomePage() {
   const [packageId, setPackageId] = useState("");
+  const [isPackage, setIsPackage] = useState<boolean | null>(null);
+  const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
   const [fileModules, setFileModules] = useState<DecompiledModule[]>([]);
-  const [selected] = useState(0);
   const [loading, setLoading] = useState(false);
   const [timeMs, setTimeMs] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  const handleFetchPackage = useCallback(() => {
+  // Validate package ID in background
+  useEffect(() => {
     const id = packageId.trim();
-    if (!id || !id.startsWith("0x")) {
-      setError("Enter a valid Sui package ID (0x...)");
+    if (!id || !/^0x[0-9a-fA-F]{64}$/.test(id)) {
+      setIsPackage(null);
       return;
     }
+
+    setValidating(true);
+    setIsPackage(null);
+    const controller = new AbortController();
+
+    validatePackage(id, controller.signal)
+      .then((ok) => {
+        if (!controller.signal.aborted) {
+          setIsPackage(ok);
+          setValidating(false);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setIsPackage(false);
+          setValidating(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [packageId]);
+
+  const handleSubmit = useCallback(() => {
+    const id = packageId.trim();
+    if (!id || !isPackage) return;
     navigate({ to: "/decompile/$packageId", params: { packageId: id } });
-  }, [packageId, navigate]);
+  }, [packageId, isPackage, navigate]);
 
   const handleFileDecompile = useCallback(
     async (bytes: Uint8Array, name: string) => {
@@ -80,10 +109,10 @@ export function HomePage() {
     [handleFileDecompile]
   );
 
-  const current = fileModules[selected];
+  const current = fileModules[0];
 
   // File decompile result view
-  if (fileModules.length > 0 && current) {
+  if (current) {
     return (
       <main className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
@@ -119,76 +148,87 @@ export function HomePage() {
             </div>
           </div>
           <div className="flex-1 overflow-auto">
-            <pre className="p-4 text-sm leading-relaxed font-mono whitespace-pre">
-              <code>{current.source}</code>
-            </pre>
+            <CodeBlock code={current.source} />
           </div>
         </div>
       </main>
     );
   }
 
+  const looksLikeId = /^0x[0-9a-fA-F]{64}$/.test(packageId.trim());
+  const canSubmit = looksLikeId && isPackage === true && !validating;
+
   return (
-    <main className="flex flex-1 overflow-hidden">
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6">
-        {/* Package ID input */}
-        <div className="w-full max-w-lg">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={packageId}
-              onChange={(e) => setPackageId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleFetchPackage()}
-              placeholder="Sui package ID (0x...)"
-              className="flex-1 rounded-md border bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            <Button onClick={handleFetchPackage} disabled={!packageId.trim()}>
-              Decompile
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px w-8 bg-border" />
-          or
-          <span className="h-px w-8 bg-border" />
-        </div>
-
-        {/* File drop */}
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-          className="w-full max-w-lg cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors hover:border-foreground/25"
-        >
-          <p className="text-sm font-medium">Drop a .mv file</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            or click to choose
-          </p>
+    <main
+      className="flex flex-1 overflow-hidden"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleDrop}
+    >
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
+        <div className="flex gap-2" style={{ width: "66ch" }}>
           <input
-            ref={fileRef}
-            type="file"
-            accept=".mv"
-            onChange={handleFile}
-            className="hidden"
+            type="text"
+            value={packageId}
+            onChange={(e) => {
+              setPackageId(e.target.value);
+              setError("");
+            }}
+            onKeyDown={(e) => e.key === "Enter" && canSubmit && handleSubmit()}
+            placeholder="0x..."
+            spellCheck={false}
+            autoComplete="off"
+            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
+          <Button onClick={handleSubmit} disabled={!canSubmit}>
+            {validating ? "Checking…" : "Decompile"}
+          </Button>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Runs entirely in your browser — no server, no uploads
-        </p>
+        <div className="text-xs text-muted-foreground" style={{ width: "66ch" }}>
+          {looksLikeId && validating && (
+            <span className="animate-pulse">Verifying package…</span>
+          )}
+          {looksLikeId && isPackage === false && !validating && (
+            <span className="text-destructive">Not a package</span>
+          )}
+          {!looksLikeId && packageId.trim().length > 0 && (
+            <span className="text-destructive">
+              Invalid — expected 0x followed by 64 hex characters
+            </span>
+          )}
+          {!packageId.trim() && !loading && !error && (
+            <span>
+              Or{" "}
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="underline underline-offset-2 hover:text-foreground transition-colors"
+              >
+                upload a .mv file
+              </button>
+              {" "}/ drag it anywhere on this page
+            </span>
+          )}
+        </div>
 
         {loading && (
           <p className="text-sm text-muted-foreground animate-pulse">
-            Decompiling...
+            Decompiling…
           </p>
         )}
 
         {error && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 max-w-md">
+          <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4" style={{ width: "66ch" }}>
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".mv"
+          onChange={handleFile}
+          className="hidden"
+        />
       </div>
     </main>
   );
