@@ -169,80 +169,73 @@ export function HomePage() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-        <div className="flex gap-2" style={{ width: "66ch" }}>
-          <select
-            value={network}
-            onChange={(e) => {
-              setNetwork(e.target.value as Network);
-              setIsPackage(null);
-            }}
-            className="rounded-md border bg-background px-2 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            {NETWORKS.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            value={packageId}
-            onChange={(e) => {
-              setPackageId(e.target.value);
-              setError("");
-            }}
-            onKeyDown={(e) => e.key === "Enter" && canSubmit && handleSubmit()}
-            placeholder="0x..."
-            spellCheck={false}
-            autoComplete="off"
-            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-          <Button onClick={handleSubmit} disabled={!canSubmit}>
-            {validating ? "Checking…" : "Decompile"}
-          </Button>
-        </div>
-
-        <div className="text-xs text-muted-foreground" style={{ width: "66ch" }}>
-          {looksLikeId && validating && (
-            <span className="animate-pulse">Verifying package…</span>
-          )}
-          {looksLikeId && isPackage === false && !validating && (
-            <span className="text-destructive">Not a package on {network}</span>
-          )}
-          {!looksLikeId && packageId.trim().length > 0 && (
-            <span className="text-destructive">
-              Invalid — expected 0x followed by 64 hex characters
-            </span>
-          )}
-          {!packageId.trim() && !loading && !error && (
-            <span>
-              Or{" "}
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="underline underline-offset-2 hover:text-foreground transition-colors"
-              >
-                upload a .mv file
-              </button>
-              {" "}/ drag it anywhere on this page
-            </span>
-          )}
-        </div>
-
-        {loading && (
-          <p className="text-sm text-muted-foreground animate-pulse">
-            Decompiling…
-          </p>
-        )}
-
-        {error && (
-          <div
-            className="rounded-lg border border-destructive/50 bg-destructive/5 p-4"
-            style={{ width: "66ch" }}
-          >
-            <p className="text-sm text-destructive">{error}</p>
+      <div className="relative flex flex-1 items-center justify-center p-6">
+        <div className="flex flex-col gap-3" style={{ width: "66ch" }}>
+          <div className="flex gap-2">
+            <select
+              value={network}
+              onChange={(e) => {
+                setNetwork(e.target.value as Network);
+                setIsPackage(null);
+              }}
+              className="rounded-md border bg-background px-2 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              {NETWORKS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={packageId}
+              onChange={(e) => {
+                setPackageId(e.target.value);
+                setError("");
+              }}
+              onKeyDown={(e) => e.key === "Enter" && canSubmit && handleSubmit()}
+              placeholder="0x..."
+              spellCheck={false}
+              autoComplete="off"
+              className="flex-1 rounded-md border bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <Button onClick={handleSubmit} disabled={!canSubmit}>
+              {validating ? "Checking…" : "Decompile"}
+            </Button>
           </div>
-        )}
+
+          <div className="h-5 text-xs text-muted-foreground">
+            {looksLikeId && validating && (
+              <span className="animate-pulse">Verifying package…</span>
+            )}
+            {looksLikeId && isPackage === false && !validating && (
+              <span className="text-destructive">Not a package on {network}</span>
+            )}
+            {!looksLikeId && packageId.trim().length > 0 && (
+              <span className="text-destructive">
+                Invalid — expected 0x followed by 64 hex characters
+              </span>
+            )}
+            {!packageId.trim() && !loading && !error && (
+              <span>
+                Or{" "}
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="underline underline-offset-2 hover:text-foreground transition-colors"
+                >
+                  upload a .mv file
+                </button>
+                {" "}/ drag it anywhere on this page
+              </span>
+            )}
+            {loading && (
+              <span className="animate-pulse">Decompiling…</span>
+            )}
+            {error && (
+              <span className="text-destructive">{error}</span>
+            )}
+          </div>
+        </div>
 
         <input
           ref={fileRef}
