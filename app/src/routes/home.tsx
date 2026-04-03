@@ -197,7 +197,7 @@ export function HomePage() {
               placeholder="0x..."
               spellCheck={false}
               autoComplete="off"
-              className="w-[66ch] rounded-md border bg-background px-3 py-2 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="w-[70ch] rounded-md border bg-background px-3 py-2 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
             <Button onClick={handleSubmit} disabled={!canSubmit}>
               {validating ? "Checking…" : "Decompile"}
