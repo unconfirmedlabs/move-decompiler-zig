@@ -1,12 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
-import { validatePackage, type Network } from "@/lib/sui";
-import { getStoredNetwork, setStoredNetwork } from "@/lib/network";
+import { validatePackage } from "@/lib/sui";
+import { getStoredNetwork } from "@/lib/network";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { CodeBlock } from "@/components/code-block";
-
-const NETWORKS: Network[] = ["mainnet", "testnet", "devnet", "localnet"];
 
 interface DecompiledModule {
   name: string;
@@ -16,11 +16,17 @@ interface DecompiledModule {
 
 export function HomePage() {
   const [packageId, setPackageId] = useState("");
-  const [network, setNetworkState] = useState<Network>(getStoredNetwork());
-  const setNetwork = (n: Network) => {
-    setNetworkState(n);
-    setStoredNetwork(n);
-  };
+  const [network, setNetwork] = useState(getStoredNetwork());
+
+  // Sync with header network selector
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setNetwork((e as CustomEvent).detail);
+      setIsPackage(null);
+    };
+    window.addEventListener("network-change", handler);
+    return () => window.removeEventListener("network-change", handler);
+  }, []);
   const [isPackage, setIsPackage] = useState<boolean | null>(null);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
@@ -125,9 +131,9 @@ export function HomePage() {
 
   if (current) {
     return (
-      <main className="flex flex-1 overflow-hidden">
-        <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-          <div className="shrink-0 flex items-center justify-between border-b px-4 py-2">
+      <main className="flex flex-1 gap-4 p-4 overflow-hidden">
+        <Card className="flex flex-1 flex-col min-w-0 rounded-2xl overflow-hidden">
+          <div className="shrink-0 flex items-center justify-between border-b px-5 py-3">
             <div className="flex items-center gap-2 min-w-0">
               <span className="font-medium font-mono truncate">
                 {current.name}
@@ -158,10 +164,10 @@ export function HomePage() {
               </Button>
             </div>
           </div>
-          <div className="flex-1 overflow-auto">
+          <CardContent className="flex-1 overflow-auto p-0">
             <CodeBlock code={current.source} />
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </main>
     );
   }
@@ -178,21 +184,7 @@ export function HomePage() {
       <div className="relative flex flex-1 items-center justify-center p-6">
         <div className="flex flex-col gap-3">
           <div className="flex gap-2 w-full">
-            <select
-              value={network}
-              onChange={(e) => {
-                setNetwork(e.target.value as Network);
-                setIsPackage(null);
-              }}
-              className="rounded-full border-0 bg-muted px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {NETWORKS.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <input
+            <Input
               type="text"
               value={packageId}
               onChange={(e) => {
@@ -203,9 +195,9 @@ export function HomePage() {
               placeholder="0x..."
               spellCheck={false}
               autoComplete="off"
-              className="w-[66ch] box-content rounded-full border-0 bg-muted px-5 py-3 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-[66ch] box-content h-auto px-5 py-3 font-mono"
             />
-            <Button className="self-stretch" onClick={handleSubmit} disabled={!canSubmit}>
+            <Button className="self-stretch rounded-3xl px-6" onClick={handleSubmit} disabled={!canSubmit}>
               {validating ? "Checking…" : "Decompile"}
             </Button>
           </div>
