@@ -45,7 +45,7 @@ const homeRoute = createRoute({
 
 const decompileRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/decompile/$packageId",
+  path: "/decompile/$network/$packageId",
   component: DecompilePage,
 });
 

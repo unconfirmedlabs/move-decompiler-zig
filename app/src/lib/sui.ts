@@ -1,9 +1,24 @@
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 
-const client = new SuiGrpcClient({
-  network: "mainnet",
-  baseUrl: "https://fullnode.mainnet.sui.io:443",
-});
+export type Network = "mainnet" | "testnet" | "devnet" | "localnet";
+
+const URLS: Record<Network, string> = {
+  mainnet: "https://fullnode.mainnet.sui.io:443",
+  testnet: "https://fullnode.testnet.sui.io:443",
+  devnet: "https://fullnode.devnet.sui.io:443",
+  localnet: "http://127.0.0.1:9000",
+};
+
+const clients = new Map<Network, SuiGrpcClient>();
+
+function getClient(network: Network): SuiGrpcClient {
+  let client = clients.get(network);
+  if (!client) {
+    client = new SuiGrpcClient({ network, baseUrl: URLS[network] });
+    clients.set(network, client);
+  }
+  return client;
+}
 
 export interface MoveModule {
   name: string;
@@ -11,7 +26,6 @@ export interface MoveModule {
 }
 
 function parsePackageBcs(data: Uint8Array): Map<string, Uint8Array> {
-  // BCS layout: discriminator(1) + id(32) + version(8) + Map<String, Vec<u8>>
   let pos = 1 + 32 + 8;
 
   function readULEB(): number {
@@ -43,11 +57,12 @@ function parsePackageBcs(data: Uint8Array): Map<string, Uint8Array> {
 
 export async function validatePackage(
   packageId: string,
+  network: Network,
   signal?: AbortSignal
 ): Promise<boolean> {
   try {
-    void signal; // gRPC client doesn't support abort signal yet
-    const { object } = await client.core.getObject({
+    void signal;
+    const { object } = await getClient(network).core.getObject({
       objectId: packageId,
     });
     return object.type === "package";
@@ -57,9 +72,10 @@ export async function validatePackage(
 }
 
 export async function fetchPackageModules(
-  packageId: string
+  packageId: string,
+  network: Network
 ): Promise<MoveModule[]> {
-  const { object } = await client.core.getObject({
+  const { object } = await getClient(network).core.getObject({
     objectId: packageId,
     include: { objectBcs: true },
   });

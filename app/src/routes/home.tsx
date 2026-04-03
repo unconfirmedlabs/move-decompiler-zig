@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
-import { validatePackage } from "@/lib/sui";
+import { validatePackage, type Network } from "@/lib/sui";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/code-block";
+
+const NETWORKS: Network[] = ["mainnet", "testnet", "devnet", "localnet"];
 
 interface DecompiledModule {
   name: string;
@@ -13,6 +15,7 @@ interface DecompiledModule {
 
 export function HomePage() {
   const [packageId, setPackageId] = useState("");
+  const [network, setNetwork] = useState<Network>("mainnet");
   const [isPackage, setIsPackage] = useState<boolean | null>(null);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
@@ -34,7 +37,7 @@ export function HomePage() {
     setIsPackage(null);
     const controller = new AbortController();
 
-    validatePackage(id, controller.signal)
+    validatePackage(id, network, controller.signal)
       .then((ok) => {
         if (!controller.signal.aborted) {
           setIsPackage(ok);
@@ -49,13 +52,16 @@ export function HomePage() {
       });
 
     return () => controller.abort();
-  }, [packageId]);
+  }, [packageId, network]);
 
   const handleSubmit = useCallback(() => {
     const id = packageId.trim();
     if (!id || !isPackage) return;
-    navigate({ to: "/decompile/$packageId", params: { packageId: id } });
-  }, [packageId, isPackage, navigate]);
+    navigate({
+      to: "/decompile/$network/$packageId",
+      params: { network, packageId: id },
+    });
+  }, [packageId, network, isPackage, navigate]);
 
   const handleFileDecompile = useCallback(
     async (bytes: Uint8Array, name: string) => {
@@ -111,7 +117,6 @@ export function HomePage() {
 
   const current = fileModules[0];
 
-  // File decompile result view
   if (current) {
     return (
       <main className="flex flex-1 overflow-hidden">
@@ -166,6 +171,20 @@ export function HomePage() {
     >
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
         <div className="flex gap-2" style={{ width: "66ch" }}>
+          <select
+            value={network}
+            onChange={(e) => {
+              setNetwork(e.target.value as Network);
+              setIsPackage(null);
+            }}
+            className="rounded-md border bg-background px-2 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {NETWORKS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
           <input
             type="text"
             value={packageId}
@@ -189,7 +208,7 @@ export function HomePage() {
             <span className="animate-pulse">Verifying package…</span>
           )}
           {looksLikeId && isPackage === false && !validating && (
-            <span className="text-destructive">Not a package</span>
+            <span className="text-destructive">Not a package on {network}</span>
           )}
           {!looksLikeId && packageId.trim().length > 0 && (
             <span className="text-destructive">
@@ -217,7 +236,10 @@ export function HomePage() {
         )}
 
         {error && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4" style={{ width: "66ch" }}>
+          <div
+            className="rounded-lg border border-destructive/50 bg-destructive/5 p-4"
+            style={{ width: "66ch" }}
+          >
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}

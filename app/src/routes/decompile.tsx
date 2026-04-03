@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
-import { fetchPackageModules } from "@/lib/sui";
+import { fetchPackageModules, type Network } from "@/lib/sui";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/code-block";
 
@@ -12,7 +12,7 @@ interface DecompiledModule {
 }
 
 export function DecompilePage() {
-  const { packageId } = useParams({ from: "/decompile/$packageId" });
+  const { packageId, network } = useParams({ from: "/decompile/$network/$packageId" });
   const [modules, setModules] = useState<DecompiledModule[]>([]);
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState("");
@@ -29,7 +29,7 @@ export function DecompilePage() {
       setSelected(0);
 
       try {
-        const mods = await fetchPackageModules(packageId);
+        const mods = await fetchPackageModules(packageId, network as Network);
         if (cancelled) return;
 
         const start = performance.now();
@@ -58,7 +58,7 @@ export function DecompilePage() {
     return () => {
       cancelled = true;
     };
-  }, [packageId]);
+  }, [packageId, network]);
 
   const current = modules[selected];
   const shortId = packageId.slice(0, 10) + "…" + packageId.slice(-4);
@@ -105,7 +105,7 @@ export function DecompilePage() {
               {shortId}
             </p>
             <p className="mb-3 text-[10px] text-muted-foreground">
-              {modules.length} modules · {timeMs}ms
+              {network} · {modules.length} modules · {timeMs}ms
             </p>
             <nav className="flex flex-col gap-0.5">
               {modules.map((m, i) => (
