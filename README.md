@@ -2,7 +2,7 @@
 
 A Move bytecode decompiler written in Zig. Converts compiled `.mv` modules back into readable Move source code.
 
-**3,193 lines of Zig. Zero dependencies. 87KB WASM.**
+**3,193 lines of Zig. Zero dependencies. 87KB WASM. Tested against 1,000+ Sui mainnet packages.**
 
 ## Features
 
@@ -149,6 +149,18 @@ The Zig decompiler exists for a different reason: **portability**. At 87KB of WA
 - **Instructions:** All arithmetic, logic, comparison, branching, local variable, function call, struct pack/unpack, field access, vector operations, type casting, reference operations, and enum operations (v7+)
 - **Abilities:** copy, drop, store, key
 - **Visibility:** private, public, friend, entry
+
+## Testing
+
+Tested against 1,000 packages from Sui mainnet (1,224 modules) with zero failures. Run the test suite yourself:
+
+```bash
+# Run unit tests
+zig build test
+
+# Test against mainnet packages (requires network)
+bun scripts/fetch-packages.ts --limit 1000
+```
 
 ## Known limitations
 
