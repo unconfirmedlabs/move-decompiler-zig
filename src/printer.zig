@@ -67,6 +67,9 @@ pub fn printModuleStructured(
     try out.appendSlice(allocator, mod_name);
     try out.appendSlice(allocator, " {\n");
 
+    // Use declarations for external modules
+    try writeUseDecls(&out, allocator, module);
+
     // Structs
     for (module.struct_defs) |sd| {
         try out.append(allocator, '\n');
@@ -451,6 +454,22 @@ fn printNodeStripTrailingContinue(
 
 // ── Helper Writers ────────────────────────────────────────────────────
 
+fn writeUseDecls(out: *Writer, allocator: Allocator, module: *const types.CompiledModule) !void {
+    var has_any = false;
+    for (module.module_handles, 0..) |mh, i| {
+        if (i == module.self_module_handle_idx) continue;
+        if (!has_any) {
+            has_any = true;
+        }
+        try out.appendSlice(allocator, "    use ");
+        try writeAddress(out, allocator, &module.address_identifiers[mh.address]);
+        try out.appendSlice(allocator, "::");
+        try out.appendSlice(allocator, module.identifiers[mh.name]);
+        try out.appendSlice(allocator, ";\n");
+    }
+    if (has_any) try out.append(allocator, '\n');
+}
+
 fn writeIndent(out: *Writer, allocator: Allocator, level: usize) !void {
     for (0..level) |_| try out.appendSlice(allocator, "    ");
 }
@@ -557,10 +576,8 @@ fn writeDatatypeName(out: *Writer, allocator: Allocator, module: *const types.Co
     const dh = module.datatype_handles[idx];
     const mh = module.module_handles[dh.module];
 
-    // Only qualify with module path if from a different module
+    // Only qualify with module name (not address) for external modules
     if (dh.module != module.self_module_handle_idx) {
-        try writeAddress(out, allocator, &module.address_identifiers[mh.address]);
-        try out.appendSlice(allocator, "::");
         try out.appendSlice(allocator, module.identifiers[mh.name]);
         try out.appendSlice(allocator, "::");
     }

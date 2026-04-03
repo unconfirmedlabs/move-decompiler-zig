@@ -272,23 +272,7 @@ fn resolveFuncName(allocator: Allocator, module: *const types.CompiledModule, fh
     }
 
     const mod_name = module.identifiers[mh.name];
-    const addr = module.address_identifiers[mh.address];
-
-    // Short address
-    var start: usize = 0;
-    while (start < 31 and addr[start] == 0) start += 1;
-    var addr_buf: [66]u8 = undefined;
-    addr_buf[0] = '0';
-    addr_buf[1] = 'x';
-    const hex = "0123456789abcdef";
-    var pos: usize = 2;
-    for (addr[start..]) |b| {
-        addr_buf[pos] = hex[b >> 4];
-        addr_buf[pos + 1] = hex[b & 0xf];
-        pos += 2;
-    }
-
-    return fmt(allocator, "{s}::{s}::{s}", .{ addr_buf[0..pos], mod_name, fn_name });
+    return fmt(allocator, "{s}::{s}", .{ mod_name, fn_name });
 }
 
 fn renderCall(
