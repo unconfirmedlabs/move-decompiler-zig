@@ -279,10 +279,7 @@ fn readBytecode(reader: *Reader) Error!types.Bytecode {
         0x3D => .{ .imm_borrow_global_generic_deprecated = try reader.readULEB128_u16() },
         0x3E => .{ .move_from_generic_deprecated = try reader.readULEB128_u16() },
         0x3F => .{ .move_to_generic_deprecated = try reader.readULEB128_u16() },
-        else => {
-            std.debug.print("Unknown opcode: 0x{x:0>2} at pos {}\n", .{ opcode, reader.pos - 1 });
-            return Error.InvalidBytecode;
-        },
+        else => return Error.InvalidBytecode,
     };
 }
 

@@ -28,4 +28,28 @@ pub fn build(b: *std.Build) void {
         .root_module = cli_mod,
     });
     b.installArtifact(cli);
+
+    // WASM library
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .freestanding,
+    });
+
+    const wasm_mod = b.addModule("wasm", .{
+        .root_source_file = b.path("src/wasm.zig"),
+        .target = wasm_target,
+        .optimize = .ReleaseSmall,
+    });
+
+    const wasm_lib = b.addExecutable(.{
+        .name = "move_decompiler",
+        .root_module = wasm_mod,
+    });
+    wasm_lib.entry = .disabled;
+    wasm_lib.export_memory = true;
+    wasm_lib.rdynamic = true;
+
+    const wasm_step = b.step("wasm", "Build WASM library");
+    const install_wasm = b.addInstallArtifact(wasm_lib, .{});
+    wasm_step.dependOn(&install_wasm.step);
 }
