@@ -3,6 +3,7 @@ import { useParams, useSearch, useNavigate, Link } from "@tanstack/react-router"
 import { decompile } from "@/lib/decompiler";
 import { fetchPackageModules, type Network } from "@/lib/sui";
 import { resolveNetwork } from "@/lib/network";
+import { getCachedModules } from "@/lib/cache";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/code-block";
 
@@ -34,7 +35,8 @@ export function DecompilePage() {
       setSelected(0);
 
       try {
-        const mods = await fetchPackageModules(packageId, network as Network);
+        const cached = getCachedModules(packageId, network);
+        const mods = cached ?? await fetchPackageModules(packageId, network as Network);
         if (cancelled) return;
 
         const start = performance.now();

@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
-import { validatePackage } from "@/lib/sui";
+import { validatePackage, fetchPackageModules } from "@/lib/sui";
 import { getStoredNetwork } from "@/lib/network";
+import { setCachedModules } from "@/lib/cache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -167,17 +168,28 @@ export function HomePage() {
 
   const [validated, setValidated] = useState(false);
 
-  // Auto-navigate when package is validated (with brief glow)
+  // When validated: glow, prefetch modules, then navigate with view transition
   useEffect(() => {
     if (!isPackage) {
       setValidated(false);
       return;
     }
     setValidated(true);
-    const timer = setTimeout(() => {
+    let cancelled = false;
+
+    const id = packageId.trim();
+    // Start prefetching immediately
+    const prefetch = fetchPackageModules(id, network);
+
+    // Wait at least 800ms for the glow, then wait for prefetch
+    const minDelay = new Promise((r) => setTimeout(r, 800));
+
+    Promise.all([prefetch, minDelay]).then(([modules]) => {
+      if (cancelled) return;
+      setCachedModules(id, network, modules);
       const go = () => navigate({
         to: "/d/$packageId",
-        params: { packageId: packageId.trim() },
+        params: { packageId: id },
         search: { network: network !== "mainnet" ? network : undefined },
       });
       if (document.startViewTransition) {
@@ -185,8 +197,11 @@ export function HomePage() {
       } else {
         go();
       }
-    }, 800);
-    return () => clearTimeout(timer);
+    }).catch(() => {
+      if (!cancelled) setValidated(false);
+    });
+
+    return () => { cancelled = true; };
   }, [isPackage, packageId, network, navigate]);
 
   return (
