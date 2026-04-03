@@ -175,11 +175,16 @@ export function HomePage() {
     }
     setValidated(true);
     const timer = setTimeout(() => {
-      navigate({
+      const go = () => navigate({
         to: "/d/$packageId",
         params: { packageId: packageId.trim() },
         search: { network: network !== "mainnet" ? network : undefined },
       });
+      if (document.startViewTransition) {
+        document.startViewTransition(go);
+      } else {
+        go();
+      }
     }, 800);
     return () => clearTimeout(timer);
   }, [isPackage, packageId, network, navigate]);
