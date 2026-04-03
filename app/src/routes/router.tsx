@@ -43,7 +43,7 @@ const decompileRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/d/$packageId",
   validateSearch: (search: Record<string, unknown>) => ({
-    network: (search.network as string) || "mainnet",
+    network: (search.network as string) || undefined,
   }),
   component: DecompilePage,
 });

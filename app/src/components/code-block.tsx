@@ -10,22 +10,18 @@ const LITERALS =
 const STRINGS = /(b"[^"]*"|x"[^"]*")/g;
 const COMMENTS = /(\/\/.*$|\/\*[\s\S]*?\*\/)/gm;
 
-function highlight(code: string): string {
-  // Escape HTML
-  let html = code
+function highlightLine(line: string): string {
+  let html = line
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // Apply highlights with markers to avoid double-matching
-  // Order matters: comments first, then strings, then keywords
   html = html.replace(COMMENTS, '<span class="mv-comment">$1</span>');
   html = html.replace(STRINGS, '<span class="mv-string">$1</span>');
   html = html.replace(KEYWORDS, '<span class="mv-keyword">$1</span>');
   html = html.replace(TYPES, '<span class="mv-type">$1</span>');
   html = html.replace(ABILITIES, '<span class="mv-ability">$1</span>');
   html = html.replace(LITERALS, (match) => {
-    // Don't highlight if already inside a span
     return `<span class="mv-literal">${match}</span>`;
   });
 
@@ -33,11 +29,27 @@ function highlight(code: string): string {
 }
 
 export function CodeBlock({ code }: { code: string }) {
-  const html = useMemo(() => highlight(code), [code]);
+  const lines = useMemo(() => {
+    return code.split("\n").map((line) => highlightLine(line));
+  }, [code]);
+
+  const gutterWidth = String(lines.length).length;
 
   return (
     <pre className="p-4 leading-relaxed font-mono whitespace-pre">
-      <code dangerouslySetInnerHTML={{ __html: html }} />
+      <code>
+        {lines.map((html, i) => (
+          <div key={i} className="flex">
+            <span
+              className="select-none text-muted-foreground/40 text-right pr-4 shrink-0"
+              style={{ width: `${gutterWidth + 1}ch` }}
+            >
+              {i + 1}
+            </span>
+            <span dangerouslySetInnerHTML={{ __html: html || "\n" }} />
+          </div>
+        ))}
+      </code>
     </pre>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
 import { validatePackage, type Network } from "@/lib/sui";
+import { getStoredNetwork, setStoredNetwork } from "@/lib/network";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/code-block";
 
@@ -15,7 +16,11 @@ interface DecompiledModule {
 
 export function HomePage() {
   const [packageId, setPackageId] = useState("");
-  const [network, setNetwork] = useState<Network>("mainnet");
+  const [network, setNetworkState] = useState<Network>(getStoredNetwork());
+  const setNetwork = (n: Network) => {
+    setNetworkState(n);
+    setStoredNetwork(n);
+  };
   const [isPackage, setIsPackage] = useState<boolean | null>(null);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
@@ -60,7 +65,7 @@ export function HomePage() {
     navigate({
       to: "/d/$packageId",
       params: { packageId: id },
-      search: { network },
+      search: { network: network !== "mainnet" ? network : undefined },
     });
   }, [packageId, network, isPackage, navigate]);
 
