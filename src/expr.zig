@@ -16,6 +16,10 @@ pub fn renderBlock(
     var stack = std.ArrayList([]const u8){};
     var statements = std.ArrayList([]const u8){};
 
+    // Track which locals have been assigned for let bindings
+    var assigned = std.AutoHashMap(u8, void).init(allocator);
+    defer assigned.deinit();
+
     var i: u16 = start;
     while (i < end) : (i += 1) {
         const instr = code[i];
@@ -39,7 +43,13 @@ pub fn renderBlock(
             // ── Store ────────────────────────────────────────────
             .st_loc => |idx| {
                 const val = pop(&stack);
-                try statements.append(allocator, try fmt(allocator, "{s} = {s}", .{ try localName(allocator, idx, param_count), val }));
+                const name = try localName(allocator, idx, param_count);
+                if (assigned.get(idx) == null) {
+                    try assigned.put(idx, {});
+                    try statements.append(allocator, try fmt(allocator, "let {s} = {s}", .{ name, val }));
+                } else {
+                    try statements.append(allocator, try fmt(allocator, "{s} = {s}", .{ name, val }));
+                }
             },
 
             // ── Field access ─────────────────────────────────────
@@ -287,10 +297,17 @@ fn renderCall(
     }
     try call_buf.append(allocator, ')');
 
-    if (ret_sig.tokens.len > 0) {
+    if (ret_sig.tokens.len == 0) {
+        try statements.append(allocator, call_buf.items);
+    } else if (ret_sig.tokens.len == 1) {
         try stack.append(allocator, call_buf.items);
     } else {
-        try statements.append(allocator, call_buf.items);
+        // Multi-return: push each return value with tuple index
+        // The call itself becomes a let binding
+        const call_str = try allocator.dupe(u8, call_buf.items);
+        for (0..ret_sig.tokens.len) |ri| {
+            try stack.append(allocator, try fmt(allocator, "{s}.{}", .{ call_str, ri }));
+        }
     }
 }
 

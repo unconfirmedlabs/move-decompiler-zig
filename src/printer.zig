@@ -267,20 +267,21 @@ fn printNode(
             }
         },
         .if_else => |ie| {
-            // Render condition block statements, last value on stack is the condition
+            // Render entire condition block (minus branch instruction).
+            // Last expression on the stack becomes the condition; earlier statements are preamble.
             const cond_block = cfg.blocks[ie.cond_block];
             const cond_end = if (cond_block.end > cond_block.start) cond_block.end - 1 else cond_block.end;
-            if (cond_end > cond_block.start) {
-                const pre_stmts = expr.renderBlock(allocator, module, code, cond_block.start, cond_end, param_count) catch &.{};
-                for (pre_stmts) |stmt| {
+            const all_stmts = expr.renderBlock(allocator, module, code, cond_block.start, cond_end, param_count) catch &.{};
+
+            // All but last are preamble statements
+            if (all_stmts.len > 1) {
+                for (all_stmts[0 .. all_stmts.len - 1]) |stmt| {
                     try writeIndent(out, allocator, indent);
                     try out.appendSlice(allocator, stmt);
                     try out.appendSlice(allocator, ";\n");
                 }
             }
-            // The condition itself
-            const cond_stmts = expr.renderBlock(allocator, module, code, cond_end, cond_block.end, param_count) catch &.{};
-            const cond_expr = if (cond_stmts.len > 0) cond_stmts[cond_stmts.len - 1] else "/* cond */";
+            const cond_expr = if (all_stmts.len > 0) all_stmts[all_stmts.len - 1] else "/* cond */";
 
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "if (");
@@ -297,8 +298,16 @@ fn printNode(
         },
         .while_loop => |wl| {
             const cond_block = cfg.blocks[wl.cond_block];
-            const cond_stmts = expr.renderBlock(allocator, module, code, cond_block.start, cond_block.end, param_count) catch &.{};
-            const cond_expr = if (cond_stmts.len > 0) cond_stmts[cond_stmts.len - 1] else "true";
+            const cond_end = if (cond_block.end > cond_block.start) cond_block.end - 1 else cond_block.end;
+            const all_stmts = expr.renderBlock(allocator, module, code, cond_block.start, cond_end, param_count) catch &.{};
+            if (all_stmts.len > 1) {
+                for (all_stmts[0 .. all_stmts.len - 1]) |stmt| {
+                    try writeIndent(out, allocator, indent);
+                    try out.appendSlice(allocator, stmt);
+                    try out.appendSlice(allocator, ";\n");
+                }
+            }
+            const cond_expr = if (all_stmts.len > 0) all_stmts[all_stmts.len - 1] else "true";
 
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "while (");

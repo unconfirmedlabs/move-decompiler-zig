@@ -208,15 +208,22 @@ fn structureLoop(
 ) StructError!*const Node {
     const block = cfg.blocks[header];
 
+    // Create fresh visited set for loop body — blocks inside the loop
+    // haven't been visited in this loop's context
+    const loop_visited = try allocator.alloc(bool, visited.len);
+    @memcpy(loop_visited, visited);
+
     switch (block.terminator) {
         .branch => |br| {
-            // Check if one branch exits the loop
-            const then_in_loop = dom.dominates(header, br.then_id);
-            const else_in_loop = dom.dominates(header, br.else_id);
+            // Check if one branch leads back to loop header (is in the loop body).
+            // "In loop" = there exists a path from the target back to the header,
+            // not just domination (which includes the exit block).
+            const then_in_loop = reachesHeader(cfg, br.then_id, header, allocator) catch false;
+            const else_in_loop = reachesHeader(cfg, br.else_id, header, allocator) catch false;
 
             if (then_in_loop and !else_in_loop) {
                 // while (cond) { body } — else exits
-                const body = try structureRegion(allocator, cfg, dom, loops, br.then_id, header, visited);
+                const body = try structureRegion(allocator, cfg, dom, loops, br.then_id, header, loop_visited);
                 const while_node = try makeNode(allocator, .{ .while_loop = .{
                     .cond_block = header,
                     .body = body,
@@ -232,7 +239,7 @@ fn structureLoop(
 
             if (!then_in_loop and else_in_loop) {
                 // while (!cond) { body } — then exits
-                const body = try structureRegion(allocator, cfg, dom, loops, br.else_id, header, visited);
+                const body = try structureRegion(allocator, cfg, dom, loops, br.else_id, header, loop_visited);
                 const while_node = try makeNode(allocator, .{ .while_loop = .{
                     .cond_block = header,
                     .body = body,
@@ -246,7 +253,7 @@ fn structureLoop(
             }
 
             // Both in loop — infinite loop with break
-            const body = try structureRegion(allocator, cfg, dom, loops, header, header, visited);
+            const body = try structureRegion(allocator, cfg, dom, loops, header, header, loop_visited);
             return makeNode(allocator, .{ .loop_ = .{ .body = body } });
         },
         .jump => |target| {
@@ -257,7 +264,7 @@ fn structureLoop(
                 } });
             }
             // Loop with body
-            const body = try structureRegion(allocator, cfg, dom, loops, target, header, visited);
+            const body = try structureRegion(allocator, cfg, dom, loops, target, header, loop_visited);
             var inner = try allocator.alloc(*const Node, 2);
             inner[0] = try makeNode(allocator, .{ .block = header });
             inner[1] = body;
@@ -269,6 +276,37 @@ fn structureLoop(
             return makeNode(allocator, .{ .block = header });
         },
     }
+}
+
+/// Check if there's a path from `start` back to `header` (i.e., start is in the loop body).
+fn reachesHeader(cfg: *const cfg_mod.Cfg, start: BlockId, header: BlockId, allocator: Allocator) !bool {
+    if (start == header) return true;
+    const n = cfg.blocks.len;
+    const visited_r = try allocator.alloc(bool, n);
+    @memset(visited_r, false);
+
+    var work = std.ArrayList(BlockId){};
+    try work.append(allocator, start);
+    visited_r[start] = true;
+
+    while (work.items.len > 0) {
+        const b = work.pop() orelse break;
+        const block = cfg.blocks[b];
+        const succs: []const BlockId = switch (block.terminator) {
+            .jump => |t| &[_]BlockId{t},
+            .branch => |br| &[_]BlockId{ br.then_id, br.else_id },
+            .ret, .abort => &[_]BlockId{},
+            .variant_switch => |targets| targets,
+        };
+        for (succs) |s| {
+            if (s == header) return true;
+            if (!visited_r[s]) {
+                visited_r[s] = true;
+                try work.append(allocator, s);
+            }
+        }
+    }
+    return false;
 }
 
 fn findMergePoint(

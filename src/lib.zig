@@ -106,3 +106,12 @@ test "decompile balance.mv to source" {
     try testing.expect(std.mem.indexOf(u8, output, "struct Balance") != null);
     try testing.expect(std.mem.indexOf(u8, output, "struct Supply") != null);
 }
+
+test "decompile divide_into_n contains while loop" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const output = try decompile(arena.allocator(), loadTestFile("test_data/coin.mv"));
+    try testing.expect(std.mem.indexOf(u8, output, "while (") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "vector::push_back") != null);
+}
