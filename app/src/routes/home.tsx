@@ -184,7 +184,7 @@ export function HomePage() {
                 setNetwork(e.target.value as Network);
                 setIsPackage(null);
               }}
-              className="rounded-md border bg-background px-2 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="rounded-full border-0 bg-muted px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {NETWORKS.map((n) => (
                 <option key={n} value={n}>
@@ -203,7 +203,7 @@ export function HomePage() {
               placeholder="0x..."
               spellCheck={false}
               autoComplete="off"
-              className="w-[66ch] box-content rounded-md border bg-background px-3 py-2 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="w-[66ch] box-content rounded-full border-0 bg-muted px-5 py-3 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <Button className="self-stretch" onClick={handleSubmit} disabled={!canSubmit}>
               {validating ? "Checking…" : "Decompile"}
