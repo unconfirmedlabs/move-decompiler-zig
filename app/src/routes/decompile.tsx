@@ -17,7 +17,7 @@ export function DecompilePage() {
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [timeMs, setTimeMs] = useState(0);
+  const [, setTimeMs] = useState(0);
 
   useEffect(() => {
     let cancelled = false;

@@ -170,7 +170,7 @@ export function HomePage() {
       onDrop={handleDrop}
     >
       <div className="relative flex flex-1 items-center justify-center p-6">
-        <div className="flex flex-col gap-3" style={{ width: "66ch" }}>
+        <div className="flex flex-col gap-3 w-full max-w-3xl">
           <div className="flex gap-2">
             <select
               value={network}
