@@ -24,6 +24,13 @@ pub const Node = union(enum) {
     loop_: struct {
         body: *const Node,
     },
+    /// Match/switch on enum variant
+    match_: struct {
+        /// Block containing the variant_switch instruction
+        cond_block: cfg_mod.BlockId,
+        /// One branch per variant
+        arms: []const MatchArm,
+    },
     /// Break from enclosing loop
     break_,
     /// Continue to enclosing loop header
@@ -32,4 +39,8 @@ pub const Node = union(enum) {
     return_,
     /// Empty node
     empty,
+};
+
+pub const MatchArm = struct {
+    body: *const Node,
 };

@@ -83,9 +83,12 @@ fn structureRegion(
             return structureBranch(allocator, cfg, dom, loops, block_id, br.then_id, br.else_id, loop_header, visited);
         },
         .variant_switch => |targets| {
-            // For now, treat variant switch as a block (full match support later)
-            _ = targets;
-            return makeNode(allocator, .{ .block = block_id });
+            const arms = try allocator.alloc(ast.MatchArm, targets.len);
+            for (targets, 0..) |target_id, i| {
+                const arm_node = try structureRegion(allocator, cfg, dom, loops, target_id, loop_header, visited);
+                arms[i] = .{ .body = arm_node };
+            }
+            return makeNode(allocator, .{ .match_ = .{ .cond_block = block_id, .arms = arms } });
         },
     }
 }

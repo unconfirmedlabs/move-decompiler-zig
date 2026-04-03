@@ -335,6 +335,71 @@ fn printNode(
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "}\n");
         },
+        .match_ => |m| {
+            const cond_block = cfg.blocks[m.cond_block];
+            // Render preamble (everything before the variant_switch instruction)
+            const cond_end = if (cond_block.end > cond_block.start) cond_block.end - 1 else cond_block.end;
+            if (cond_end > cond_block.start) {
+                const preamble = expr.renderBlockWithAssigned(allocator, module, code, cond_block.start, cond_end, param_count, assigned) catch &.{};
+                for (preamble) |stmt| {
+                    try writeIndent(out, allocator, indent);
+                    try out.appendSlice(allocator, stmt);
+                    try out.appendSlice(allocator, ";\n");
+                }
+            }
+
+            // Resolve enum variant names from the variant_switch instruction
+            const last_instr = code[cond_block.end - 1];
+            var enum_def_idx: ?types.EnumDefIndex = null;
+            switch (last_instr) {
+                .variant_switch => |jt_idx| {
+                    // Look up the function's jump table to find the enum
+                    for (module.function_defs) |fd| {
+                        const fh = module.function_handles[fd.function];
+                        if (fh.module != module.self_module_handle_idx) continue;
+                        if (fd.code) |cu| {
+                            if (cu.code.ptr == code.ptr and jt_idx < cu.jump_tables.len) {
+                                enum_def_idx = cu.jump_tables[jt_idx].head_enum;
+                                break;
+                            }
+                        }
+                    }
+                },
+                else => {},
+            }
+
+            try writeIndent(out, allocator, indent);
+            try out.appendSlice(allocator, "match {\n");
+            for (m.arms, 0..) |arm, ai| {
+                try writeIndent(out, allocator, indent + 1);
+                // Try to resolve variant name
+                if (enum_def_idx) |eidx| {
+                    if (eidx < module.enum_defs.len) {
+                        const ed = module.enum_defs[eidx];
+                        if (ai < ed.variants.len) {
+                            const dh = module.datatype_handles[ed.enum_handle];
+                            try out.appendSlice(allocator, module.identifiers[dh.name]);
+                            try out.appendSlice(allocator, "::");
+                            try out.appendSlice(allocator, module.identifiers[ed.variants[ai].name]);
+                        } else {
+                            try out.appendSlice(allocator, "_ /* variant ");
+                            try writeUsize(out, allocator, ai);
+                            try out.appendSlice(allocator, " */");
+                        }
+                    }
+                } else {
+                    try out.appendSlice(allocator, "_ /* variant ");
+                    try writeUsize(out, allocator, ai);
+                    try out.appendSlice(allocator, " */");
+                }
+                try out.appendSlice(allocator, " => {\n");
+                try printNode(out, allocator, module, cfg, code, param_count, arm.body, indent + 2, assigned, false);
+                try writeIndent(out, allocator, indent + 1);
+                try out.appendSlice(allocator, "}\n");
+            }
+            try writeIndent(out, allocator, indent);
+            try out.appendSlice(allocator, "}\n");
+        },
         .break_ => {
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "break;\n");

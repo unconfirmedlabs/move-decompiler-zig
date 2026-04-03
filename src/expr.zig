@@ -196,10 +196,14 @@ pub fn renderBlockWithAssigned(
             .br_true, .br_false, .branch => {},
 
             // ── Enum ops ─────────────────────────────────────────
-            .pack_variant, .pack_variant_generic => try stack.append(allocator, "/* variant_pack */"),
-            .unpack_variant, .unpack_variant_imm_ref, .unpack_variant_mut_ref,
-            .unpack_variant_generic, .unpack_variant_generic_imm_ref, .unpack_variant_generic_mut_ref,
-            => try stack.append(allocator, "/* variant_unpack */"),
+            .pack_variant => |vh_idx| try renderPackVariant(allocator, module, &stack, vh_idx, false),
+            .pack_variant_generic => |vi_idx| try renderPackVariant(allocator, module, &stack, vi_idx, true),
+            .unpack_variant => |vh_idx| try renderUnpackVariant(allocator, module, &stack, &statements, vh_idx, false),
+            .unpack_variant_imm_ref => |vh_idx| try renderUnpackVariant(allocator, module, &stack, &statements, vh_idx, false),
+            .unpack_variant_mut_ref => |vh_idx| try renderUnpackVariant(allocator, module, &stack, &statements, vh_idx, false),
+            .unpack_variant_generic => |vi_idx| try renderUnpackVariant(allocator, module, &stack, &statements, vi_idx, true),
+            .unpack_variant_generic_imm_ref => |vi_idx| try renderUnpackVariant(allocator, module, &stack, &statements, vi_idx, true),
+            .unpack_variant_generic_mut_ref => |vi_idx| try renderUnpackVariant(allocator, module, &stack, &statements, vi_idx, true),
             .variant_switch => {},
 
             // Deprecated global ops
@@ -431,6 +435,103 @@ fn renderUnpack(
             }
         },
         .native => try statements.append(allocator, try fmt(allocator, "let _ = {s} /* native unpack {s} */", .{ val, name })),
+    }
+}
+
+fn resolveVariant(module: *const types.CompiledModule, idx: u16, is_generic: bool) ?struct { enum_name: []const u8, variant_name: []const u8, fields: []const types.FieldDefinition } {
+    if (is_generic) {
+        if (idx >= module.variant_inst_handles.len) return null;
+        const vi = module.variant_inst_handles[idx];
+        if (vi.enum_def_inst >= module.enum_def_instantiations.len) return null;
+        const edi = module.enum_def_instantiations[vi.enum_def_inst];
+        if (edi.def >= module.enum_defs.len) return null;
+        const ed = module.enum_defs[edi.def];
+        const dh = module.datatype_handles[ed.enum_handle];
+        if (vi.variant >= ed.variants.len) return null;
+        const vd = ed.variants[vi.variant];
+        return .{ .enum_name = module.identifiers[dh.name], .variant_name = module.identifiers[vd.name], .fields = vd.fields };
+    } else {
+        if (idx >= module.variant_handles.len) return null;
+        const vh = module.variant_handles[idx];
+        if (vh.enum_def >= module.enum_defs.len) return null;
+        const ed = module.enum_defs[vh.enum_def];
+        const dh = module.datatype_handles[ed.enum_handle];
+        if (vh.variant >= ed.variants.len) return null;
+        const vd = ed.variants[vh.variant];
+        return .{ .enum_name = module.identifiers[dh.name], .variant_name = module.identifiers[vd.name], .fields = vd.fields };
+    }
+}
+
+fn renderPackVariant(
+    allocator: Allocator,
+    module: *const types.CompiledModule,
+    stack: *std.ArrayList([]const u8),
+    idx: u16,
+    is_generic: bool,
+) !void {
+    const info = resolveVariant(module, idx, is_generic) orelse {
+        try stack.append(allocator, "/* variant_pack? */");
+        return;
+    };
+
+    var buf = std.ArrayList(u8){};
+    try buf.appendSlice(allocator, info.enum_name);
+    try buf.appendSlice(allocator, "::");
+    try buf.appendSlice(allocator, info.variant_name);
+
+    if (info.fields.len > 0) {
+        try buf.appendSlice(allocator, " { ");
+        var fi: usize = info.fields.len;
+        while (fi > 0) {
+            fi -= 1;
+            if (fi < info.fields.len - 1) try buf.appendSlice(allocator, ", ");
+            try buf.appendSlice(allocator, module.identifiers[info.fields[fi].name]);
+            try buf.appendSlice(allocator, ": ");
+            try buf.appendSlice(allocator, pop(stack));
+        }
+        try buf.appendSlice(allocator, " }");
+    }
+
+    try stack.append(allocator, buf.items);
+}
+
+fn renderUnpackVariant(
+    allocator: Allocator,
+    module: *const types.CompiledModule,
+    stack: *std.ArrayList([]const u8),
+    statements: *std.ArrayList([]const u8),
+    idx: u16,
+    is_generic: bool,
+) !void {
+    const info = resolveVariant(module, idx, is_generic) orelse {
+        try statements.append(allocator, "/* variant_unpack? */");
+        return;
+    };
+
+    const val = pop(stack);
+
+    var buf = std.ArrayList(u8){};
+    try buf.appendSlice(allocator, "let ");
+    try buf.appendSlice(allocator, info.enum_name);
+    try buf.appendSlice(allocator, "::");
+    try buf.appendSlice(allocator, info.variant_name);
+
+    if (info.fields.len > 0) {
+        try buf.appendSlice(allocator, " { ");
+        for (info.fields, 0..) |field, fi| {
+            if (fi > 0) try buf.appendSlice(allocator, ", ");
+            try buf.appendSlice(allocator, module.identifiers[field.name]);
+        }
+        try buf.appendSlice(allocator, " }");
+    }
+
+    try buf.appendSlice(allocator, " = ");
+    try buf.appendSlice(allocator, val);
+    try statements.append(allocator, buf.items);
+
+    // Push each field onto the stack
+    for (info.fields) |field| {
+        try stack.append(allocator, module.identifiers[field.name]);
     }
 }
 
