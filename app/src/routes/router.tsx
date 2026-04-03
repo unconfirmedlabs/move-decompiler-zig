@@ -13,7 +13,7 @@ const rootRoute = createRootRoute({
     <div className="flex h-svh flex-col overflow-hidden">
       <Header />
       <Outlet />
-      <footer className="shrink-0 border-t px-6 py-3 flex items-center justify-center relative">
+      <footer className="shrink-0 px-6 py-3 flex items-center justify-center relative">
         <span className="text-muted-foreground">&copy; Unconfirmed Labs, LLC</span>
         <a
           href="https://github.com/unconfirmedlabs/move-decompiler-zig"
