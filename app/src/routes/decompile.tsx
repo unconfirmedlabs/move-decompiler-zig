@@ -71,7 +71,7 @@ export function DecompilePage() {
   if (loading) {
     return (
       <main className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-muted-foreground animate-pulse">
+        <p className="text-muted-foreground animate-pulse">
           Fetching and decompiling {shortId}...
         </p>
       </main>
@@ -82,7 +82,7 @@ export function DecompilePage() {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-3">
         <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 max-w-md">
-          <p className="text-sm text-destructive">{error}</p>
+          <p className="text-destructive">{error}</p>
         </div>
         <Link to="/">
           <Button variant="outline" size="sm">
@@ -101,18 +101,12 @@ export function DecompilePage() {
       {modules.length > 1 && (
         <aside className="shrink-0 w-52 border-r overflow-y-auto">
           <div className="p-3">
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              {shortId}
-            </p>
-            <p className="mb-3 text-[10px] text-muted-foreground">
-              {network} · {modules.length} modules · {timeMs}ms
-            </p>
             <nav className="flex flex-col gap-0.5">
               {modules.map((m, i) => (
                 <button
                   key={m.name}
                   onClick={() => setSelected(i)}
-                  className={`rounded-md px-2.5 py-1.5 text-left text-xs font-mono transition-colors ${
+                  className={`rounded-md px-2.5 py-1.5 text-left font-mono transition-colors ${
                     i === selected
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -130,10 +124,10 @@ export function DecompilePage() {
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <div className="shrink-0 flex items-center justify-between border-b px-4 py-2">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-medium font-mono truncate">
+            <span className="font-medium font-mono truncate">
               {current.name}
             </span>
-            <span className="shrink-0 text-xs text-muted-foreground">
+            <span className="shrink-0 text-muted-foreground">
               {current.inputBytes.toLocaleString()} bytes →{" "}
               {current.source.split("\n").length} lines
             </span>

@@ -36,7 +36,7 @@ export function CodeBlock({ code }: { code: string }) {
   const html = useMemo(() => highlight(code), [code]);
 
   return (
-    <pre className="p-4 text-sm leading-relaxed font-mono whitespace-pre">
+    <pre className="p-4 leading-relaxed font-mono whitespace-pre">
       <code dangerouslySetInnerHTML={{ __html: html }} />
     </pre>
   );

@@ -123,10 +123,10 @@ export function HomePage() {
         <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
           <div className="shrink-0 flex items-center justify-between border-b px-4 py-2">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm font-medium font-mono truncate">
+              <span className="font-medium font-mono truncate">
                 {current.name}
               </span>
-              <span className="shrink-0 text-xs text-muted-foreground">
+              <span className="shrink-0 text-muted-foreground">
                 {current.inputBytes.toLocaleString()} bytes →{" "}
                 {current.source.split("\n").length} lines
                 {timeMs > 0 && ` · ${timeMs}ms`}
@@ -178,7 +178,7 @@ export function HomePage() {
                 setNetwork(e.target.value as Network);
                 setIsPackage(null);
               }}
-              className="rounded-md border bg-background px-2 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="rounded-md border bg-background px-2 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {NETWORKS.map((n) => (
                 <option key={n} value={n}>
@@ -197,14 +197,14 @@ export function HomePage() {
               placeholder="0x..."
               spellCheck={false}
               autoComplete="off"
-              className="flex-1 rounded-md border bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex-1 rounded-md border bg-background px-3 py-2 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
             <Button onClick={handleSubmit} disabled={!canSubmit}>
               {validating ? "Checking…" : "Decompile"}
             </Button>
           </div>
 
-          <div className="h-5 text-xs text-muted-foreground text-center">
+          <div className="h-5 text-muted-foreground text-center">
             {looksLikeId && validating && (
               <span className="animate-pulse">Verifying package…</span>
             )}
