@@ -99,33 +99,31 @@ export function DecompilePage() {
   if (!current) return null;
 
   return (
-    <main className="flex flex-1 overflow-hidden">
+    <main className="flex flex-1 gap-3 p-3 overflow-hidden">
       {/* Left sidebar */}
       {modules.length > 1 && (
-        <aside className="shrink-0 w-52 border-r overflow-y-auto">
-          <div className="p-3">
-            <nav className="flex flex-col gap-0.5">
-              {modules.map((m, i) => (
-                <button
-                  key={m.name}
-                  onClick={() => setSelected(i)}
-                  className={`rounded-md px-2.5 py-1.5 text-left font-mono transition-colors ${
-                    i === selected
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
-                >
-                  {m.name}
-                </button>
-              ))}
-            </nav>
-          </div>
+        <aside className="shrink-0 w-52 rounded-xl border bg-card overflow-y-auto">
+          <nav className="flex flex-col gap-0.5 p-2">
+            {modules.map((m, i) => (
+              <button
+                key={m.name}
+                onClick={() => setSelected(i)}
+                className={`rounded-lg px-3 py-2 text-left font-mono transition-colors ${
+                  i === selected
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                }`}
+              >
+                {m.name}
+              </button>
+            ))}
+          </nav>
         </aside>
       )}
 
       {/* Code pane */}
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        <div className="shrink-0 flex items-center justify-between border-b px-4 py-2">
+      <div className="flex flex-1 flex-col min-w-0 rounded-xl border bg-card overflow-hidden">
+        <div className="shrink-0 flex items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-medium font-mono truncate">
               {current.name}
