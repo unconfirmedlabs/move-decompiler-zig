@@ -1,21 +1,44 @@
-const GQL_URL = "https://graphql.mainnet.sui.io/graphql";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
+
+const client = new SuiGrpcClient({
+  network: "mainnet",
+  baseUrl: "https://fullnode.mainnet.sui.io:443",
+});
 
 export interface MoveModule {
   name: string;
   bytes: Uint8Array;
 }
 
-async function gql(query: string, signal?: AbortSignal) {
-  const res = await fetch(GQL_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
-    signal,
-  });
-  if (!res.ok) throw new Error(`GraphQL error: ${res.status}`);
-  const json = await res.json();
-  if (json.errors?.length) throw new Error(json.errors[0].message);
-  return json.data;
+function parsePackageBcs(data: Uint8Array): Map<string, Uint8Array> {
+  // BCS layout: discriminator(1) + id(32) + version(8) + Map<String, Vec<u8>>
+  let pos = 1 + 32 + 8;
+
+  function readULEB(): number {
+    let result = 0,
+      shift = 0;
+    while (true) {
+      const b = data[pos++];
+      result |= (b & 0x7f) << shift;
+      if (!(b & 0x80)) return result;
+      shift += 7;
+    }
+  }
+
+  const mapLen = readULEB();
+  const modules = new Map<string, Uint8Array>();
+
+  for (let i = 0; i < mapLen; i++) {
+    const nameLen = readULEB();
+    const name = new TextDecoder().decode(data.slice(pos, pos + nameLen));
+    pos += nameLen;
+    const bytesLen = readULEB();
+    const bytes = data.slice(pos, pos + bytesLen);
+    pos += bytesLen;
+    modules.set(name, bytes);
+  }
+
+  return modules;
 }
 
 export async function validatePackage(
@@ -23,12 +46,11 @@ export async function validatePackage(
   signal?: AbortSignal
 ): Promise<boolean> {
   try {
-    const data = await gql(
-      `{ object(address: "${packageId}") { asMovePackage { modules(first: 1) { nodes { name } } } } }`,
-      signal
-    );
-    const nodes = data?.object?.asMovePackage?.modules?.nodes;
-    return Array.isArray(nodes) && nodes.length > 0;
+    void signal; // gRPC client doesn't support abort signal yet
+    const { object } = await client.core.getObject({
+      objectId: packageId,
+    });
+    return object.type === "package";
   } catch {
     return false;
   }
@@ -37,40 +59,23 @@ export async function validatePackage(
 export async function fetchPackageModules(
   packageId: string
 ): Promise<MoveModule[]> {
-  const all: MoveModule[] = [];
-  let cursor: string | null = null;
+  const { object } = await client.core.getObject({
+    objectId: packageId,
+    include: { objectBcs: true },
+  });
 
-  while (true) {
-    const afterClause = cursor ? `, after: "${cursor}"` : "";
-    const data = await gql(`{
-      object(address: "${packageId}") {
-        asMovePackage {
-          modules(first: 50${afterClause}) {
-            pageInfo { hasNextPage endCursor }
-            nodes { name bytes }
-          }
-        }
-      }
-    }`);
-
-    const modules = data?.object?.asMovePackage?.modules;
-    if (!modules?.nodes?.length) {
-      if (all.length === 0) {
-        throw new Error("No modules found — is this a valid package ID?");
-      }
-      break;
-    }
-
-    for (const m of modules.nodes) {
-      all.push({
-        name: m.name,
-        bytes: Uint8Array.from(atob(m.bytes), (c) => c.charCodeAt(0)),
-      });
-    }
-
-    if (!modules.pageInfo.hasNextPage) break;
-    cursor = modules.pageInfo.endCursor;
+  if (object.type !== "package") {
+    throw new Error("Not a package");
   }
 
-  return all;
+  if (!object.objectBcs) {
+    throw new Error("No BCS data returned");
+  }
+
+  const moduleMap = parsePackageBcs(object.objectBcs);
+  if (moduleMap.size === 0) {
+    throw new Error("No modules found");
+  }
+
+  return [...moduleMap.entries()].map(([name, bytes]) => ({ name, bytes }));
 }
