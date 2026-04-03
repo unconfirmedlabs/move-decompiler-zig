@@ -115,3 +115,87 @@ test "decompile divide_into_n contains while loop" {
     try testing.expect(std.mem.indexOf(u8, output, "while (") != null);
     try testing.expect(std.mem.indexOf(u8, output, "vector::push_back") != null);
 }
+
+test "comprehensive: decompiles all bytecode features" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const output = try decompile(arena.allocator(), loadTestFile("test_data/comprehensive.mv"));
+
+    // Structs and enums
+    try testing.expect(std.mem.indexOf(u8, output, "struct Simple") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "struct Pair") != null);
+
+    // Arithmetic
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 + arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 - arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 * arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 / arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 % arg1") != null);
+
+    // Bitwise
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 | arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 & arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 ^ arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "<< 2") != null);
+    try testing.expect(std.mem.indexOf(u8, output, ">> 3") != null);
+
+    // Comparisons
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 == arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 != arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 < arg1") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0 > arg1") != null);
+
+    // Load immediates
+    try testing.expect(std.mem.indexOf(u8, output, "42u8") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "1000u16") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "70000u32") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "1000000") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "999u256") != null);
+
+    // Constants
+    try testing.expect(std.mem.indexOf(u8, output, "170141183460469231731687303715884105727u128") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "b\"hello\"") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "@0x42") != null);
+
+    // Type casts
+    try testing.expect(std.mem.indexOf(u8, output, "as u8)") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "as u128)") != null);
+
+    // Struct pack/unpack
+    try testing.expect(std.mem.indexOf(u8, output, "Simple { value:") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "let Simple { value }") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "Pair {") != null);
+
+    // Field access
+    try testing.expect(std.mem.indexOf(u8, output, "arg0.value") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "arg0.first") != null);
+
+    // Vector ops
+    try testing.expect(std.mem.indexOf(u8, output, "vector::length") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "vector::push_back") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "vector::pop_back") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "vector::swap") != null);
+
+    // Control flow
+    try testing.expect(std.mem.indexOf(u8, output, "while (") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "if (") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "} else {") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "abort 42") != null);
+
+    // Enum pack
+    try testing.expect(std.mem.indexOf(u8, output, "Color::Red") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "Color::Blue { intensity:") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "Result::Ok { value:") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "Result::Err { code:") != null);
+
+    // Enum match
+    try testing.expect(std.mem.indexOf(u8, output, "match {") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "Color::Green =>") != null);
+
+    // Side effects visible (security-critical)
+    try testing.expect(std.mem.indexOf(u8, output, "side_effect()") != null);
+
+    // Freeze
+    try testing.expect(std.mem.indexOf(u8, output, "freeze(") != null);
+}
