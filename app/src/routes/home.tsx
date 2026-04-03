@@ -204,7 +204,7 @@ export function HomePage() {
             </Button>
           </div>
 
-          <div className="h-5 text-xs text-muted-foreground">
+          <div className="h-5 text-xs text-muted-foreground text-center">
             {looksLikeId && validating && (
               <span className="animate-pulse">Verifying package…</span>
             )}
