@@ -3,3 +3,5 @@ zig-out/
 node_modules/
 packages.txt
 tasks/
+app/dist/
+app/public/move_decompiler.wasm
