@@ -199,7 +199,7 @@ export function HomePage() {
               autoComplete="off"
               className="w-[70ch] rounded-md border bg-background px-3 py-2 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
-            <Button onClick={handleSubmit} disabled={!canSubmit}>
+            <Button className="self-stretch" onClick={handleSubmit} disabled={!canSubmit}>
               {validating ? "Checking…" : "Decompile"}
             </Button>
           </div>
