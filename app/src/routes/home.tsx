@@ -206,10 +206,11 @@ export function HomePage() {
           />
 
           <div className="h-5 text-muted-foreground text-center">
-            {looksLikeId && isPackage === false && !validating && (
+            {validated && <span />}
+            {!validated && looksLikeId && isPackage === false && !validating && (
               <span className="text-destructive">Not a package on {network}</span>
             )}
-            {!looksLikeId && packageId.trim().length > 0 && (
+            {!validated && !looksLikeId && packageId.trim().length > 0 && (
               <span className="text-destructive">
                 Invalid — expected 0x followed by 64 hex characters
               </span>

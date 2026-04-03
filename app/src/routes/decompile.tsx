@@ -101,7 +101,7 @@ export function DecompilePage() {
   if (loading) {
     return (
       <main className="flex flex-1 items-center justify-center">
-        <p className="text-muted-foreground animate-pulse">
+        <p className="text-muted-foreground animate-pulse opacity-0 animate-[fadeIn_0.3s_0.4s_forwards]">
           Fetching and decompiling {shortId}...
         </p>
       </main>
@@ -129,7 +129,7 @@ export function DecompilePage() {
     <main className="flex flex-1 gap-4 p-4 overflow-hidden">
       {/* Left sidebar */}
       {modules.length > 1 && (
-        <aside className="shrink-0 w-56 rounded-2xl border bg-card overflow-y-auto">
+        <aside className="shrink-0 w-fit max-w-72 rounded-2xl border bg-card overflow-y-auto">
           <nav className="flex flex-col gap-1 p-3">
             {modules.map((m, i) => (
               <button

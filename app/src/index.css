@@ -130,6 +130,10 @@
     }
 }
 
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
 /* Move syntax highlighting */
 .mv-keyword { color: var(--color-mv-keyword); }
 .mv-type { color: var(--color-mv-type); }
