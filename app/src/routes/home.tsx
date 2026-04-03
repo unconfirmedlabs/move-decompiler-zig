@@ -170,8 +170,8 @@ export function HomePage() {
       onDrop={handleDrop}
     >
       <div className="relative flex flex-1 items-center justify-center p-6">
-        <div className="flex flex-col gap-3 w-full max-w-3xl">
-          <div className="flex gap-2">
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2 w-full">
             <select
               value={network}
               onChange={(e) => {
@@ -197,7 +197,7 @@ export function HomePage() {
               placeholder="0x..."
               spellCheck={false}
               autoComplete="off"
-              className="flex-1 rounded-md border bg-background px-3 py-2 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="w-[66ch] rounded-md border bg-background px-3 py-2 font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
             <Button onClick={handleSubmit} disabled={!canSubmit}>
               {validating ? "Checking…" : "Decompile"}
