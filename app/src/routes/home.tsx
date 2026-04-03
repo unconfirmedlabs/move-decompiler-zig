@@ -165,15 +165,23 @@ export function HomePage() {
 
   const looksLikeId = /^0x[0-9a-fA-F]{64}$/.test(packageId.trim());
 
-  // Auto-navigate when package is validated
+  const [validated, setValidated] = useState(false);
+
+  // Auto-navigate when package is validated (with brief glow)
   useEffect(() => {
-    if (isPackage) {
+    if (!isPackage) {
+      setValidated(false);
+      return;
+    }
+    setValidated(true);
+    const timer = setTimeout(() => {
       navigate({
         to: "/d/$packageId",
         params: { packageId: packageId.trim() },
         search: { network: network !== "mainnet" ? network : undefined },
       });
-    }
+    }, 800);
+    return () => clearTimeout(timer);
   }, [isPackage, packageId, network, navigate]);
 
   return (
@@ -194,13 +202,10 @@ export function HomePage() {
             placeholder="0x..."
             spellCheck={false}
             autoComplete="off"
-            className="w-[66ch] box-content h-auto px-5 py-3 font-mono"
+            className={`w-[66ch] box-content h-auto px-5 py-3 font-mono transition-shadow duration-500 ${validated ? "ring-2 ring-primary/60 shadow-[0_0_20px_rgba(99,102,241,0.3)]" : ""}`}
           />
 
           <div className="h-5 text-muted-foreground text-center">
-            {looksLikeId && validating && (
-              <span className="animate-pulse">Verifying package…</span>
-            )}
             {looksLikeId && isPackage === false && !validating && (
               <span className="text-destructive">Not a package on {network}</span>
             )}

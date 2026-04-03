@@ -23,16 +23,31 @@ const homeRoute = createRoute({
   component: HomePage,
 });
 
-const decompileRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/d/$packageId",
+const searchSchema = {
   validateSearch: (search: Record<string, unknown>) => ({
     network: (search.network as string) || undefined,
   }),
+};
+
+const decompileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/d/$packageId",
+  ...searchSchema,
   component: DecompilePage,
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, decompileRoute]);
+const decompileModuleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/d/$packageId/$moduleName",
+  ...searchSchema,
+  component: DecompilePage,
+});
+
+const routeTree = rootRoute.addChildren([
+  homeRoute,
+  decompileRoute,
+  decompileModuleRoute,
+]);
 
 export const router = createRouter({ routeTree });
 

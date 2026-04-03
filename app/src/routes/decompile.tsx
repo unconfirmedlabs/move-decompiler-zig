@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useSearch, Link } from "@tanstack/react-router";
+import { useParams, useSearch, useNavigate, Link } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
 import { fetchPackageModules, type Network } from "@/lib/sui";
 import { resolveNetwork } from "@/lib/network";
@@ -13,9 +13,11 @@ interface DecompiledModule {
 }
 
 export function DecompilePage() {
-  const { packageId } = useParams({ from: "/d/$packageId" });
-  const search = useSearch({ from: "/d/$packageId" });
+  const params = useParams({ strict: false }) as { packageId: string; moduleName?: string };
+  const { packageId } = params;
+  const search = useSearch({ strict: false }) as { network?: string };
   const network = resolveNetwork(search.network);
+  const navigate = useNavigate();
   const [modules, setModules] = useState<DecompiledModule[]>([]);
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState("");
@@ -47,6 +49,7 @@ export function DecompilePage() {
           });
         }
         setTimeMs(Math.round(performance.now() - start));
+        results.sort((a, b) => a.name.localeCompare(b.name));
         setModules(results);
       } catch (e: unknown) {
         if (!cancelled) {
@@ -62,6 +65,30 @@ export function DecompilePage() {
       cancelled = true;
     };
   }, [packageId, network]);
+
+  // Sync selected module with URL param
+  useEffect(() => {
+    if (params.moduleName && modules.length > 0) {
+      const idx = modules.findIndex((m) => m.name === params.moduleName);
+      if (idx >= 0) setSelected(idx);
+    }
+  }, [params.moduleName, modules]);
+
+  const selectModule = useCallback(
+    (idx: number) => {
+      setSelected(idx);
+      const mod = modules[idx];
+      if (mod) {
+        navigate({
+          to: "/d/$packageId/$moduleName",
+          params: { packageId, moduleName: mod.name },
+          search: { network: network !== "mainnet" ? network : undefined },
+          replace: true,
+        });
+      }
+    },
+    [modules, packageId, network, navigate]
+  );
 
   const current = modules[selected];
   const shortId = packageId.slice(0, 10) + "…" + packageId.slice(-4);
@@ -107,7 +134,7 @@ export function DecompilePage() {
             {modules.map((m, i) => (
               <button
                 key={m.name}
-                onClick={() => setSelected(i)}
+                onClick={() => selectModule(i)}
                 className={`rounded-xl px-3 py-2.5 text-left font-mono transition-colors ${
                   i === selected
                     ? "bg-foreground text-background"
