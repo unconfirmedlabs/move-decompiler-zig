@@ -6,6 +6,7 @@ import { getStoredNetwork } from "@/lib/network";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+// Button still used in file result view
 import { CodeBlock } from "@/components/code-block";
 
 interface DecompiledModule {
@@ -64,16 +65,6 @@ export function HomePage() {
 
     return () => controller.abort();
   }, [packageId, network]);
-
-  const handleSubmit = useCallback(() => {
-    const id = packageId.trim();
-    if (!id || !isPackage) return;
-    navigate({
-      to: "/d/$packageId",
-      params: { packageId: id },
-      search: { network: network !== "mainnet" ? network : undefined },
-    });
-  }, [packageId, network, isPackage, navigate]);
 
   const handleFileDecompile = useCallback(
     async (bytes: Uint8Array, name: string) => {
@@ -173,7 +164,17 @@ export function HomePage() {
   }
 
   const looksLikeId = /^0x[0-9a-fA-F]{64}$/.test(packageId.trim());
-  const canSubmit = looksLikeId && isPackage === true && !validating;
+
+  // Auto-navigate when package is validated
+  useEffect(() => {
+    if (isPackage) {
+      navigate({
+        to: "/d/$packageId",
+        params: { packageId: packageId.trim() },
+        search: { network: network !== "mainnet" ? network : undefined },
+      });
+    }
+  }, [isPackage, packageId, network, navigate]);
 
   return (
     <main
@@ -182,25 +183,19 @@ export function HomePage() {
       onDrop={handleDrop}
     >
       <div className="relative flex flex-1 items-center justify-center p-6">
-        <div className="flex flex-col gap-3">
-          <div className="flex gap-2 w-full">
-            <Input
-              type="text"
-              value={packageId}
-              onChange={(e) => {
-                setPackageId(e.target.value);
-                setError("");
-              }}
-              onKeyDown={(e) => e.key === "Enter" && canSubmit && handleSubmit()}
-              placeholder="0x..."
-              spellCheck={false}
-              autoComplete="off"
-              className="w-[66ch] box-content h-auto px-5 py-3 font-mono"
-            />
-            <Button className="self-stretch rounded-3xl px-6" onClick={handleSubmit} disabled={!canSubmit}>
-              {validating ? "Checking…" : "Decompile"}
-            </Button>
-          </div>
+        <div className="flex flex-col items-center gap-3">
+          <Input
+            type="text"
+            value={packageId}
+            onChange={(e) => {
+              setPackageId(e.target.value);
+              setError("");
+            }}
+            placeholder="0x..."
+            spellCheck={false}
+            autoComplete="off"
+            className="w-[66ch] box-content h-auto px-5 py-3 font-mono"
+          />
 
           <div className="h-5 text-muted-foreground text-center">
             {looksLikeId && validating && (

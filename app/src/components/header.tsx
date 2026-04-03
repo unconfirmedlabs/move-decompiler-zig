@@ -2,6 +2,13 @@ import { Link } from "@tanstack/react-router";
 import type { Network } from "@/lib/sui";
 import { getStoredNetwork, setStoredNetwork } from "@/lib/network";
 import { useState } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const NETWORKS: Network[] = ["mainnet", "testnet", "devnet", "localnet"];
 
@@ -11,7 +18,6 @@ export function Header() {
   const setNetwork = (n: Network) => {
     setNetworkState(n);
     setStoredNetwork(n);
-    // Dispatch event so other components can react
     window.dispatchEvent(new CustomEvent("network-change", { detail: n }));
   };
 
@@ -41,17 +47,18 @@ export function Header() {
             Move Decompiler
           </h1>
         </Link>
-        <select
-          value={network}
-          onChange={(e) => setNetwork(e.target.value as Network)}
-          className="rounded-3xl border border-transparent bg-input/50 px-4 py-1.5 font-mono text-muted-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-        >
-          {NETWORKS.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
+        <Select value={network} onValueChange={(v) => setNetwork(v as Network)}>
+          <SelectTrigger className="w-36 rounded-3xl font-mono">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {NETWORKS.map((n) => (
+              <SelectItem key={n} value={n} className="font-mono">
+                {n}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </header>
   );
