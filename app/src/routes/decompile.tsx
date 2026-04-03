@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams, Link } from "@tanstack/react-router";
+import { useParams, useSearch, Link } from "@tanstack/react-router";
 import { decompile } from "@/lib/decompiler";
 import { fetchPackageModules, type Network } from "@/lib/sui";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,8 @@ interface DecompiledModule {
 }
 
 export function DecompilePage() {
-  const { packageId, network } = useParams({ from: "/d/$network/$packageId" });
+  const { packageId } = useParams({ from: "/d/$packageId" });
+  const { network } = useSearch({ from: "/d/$packageId" });
   const [modules, setModules] = useState<DecompiledModule[]>([]);
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState("");

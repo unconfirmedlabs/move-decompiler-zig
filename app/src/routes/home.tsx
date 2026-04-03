@@ -58,8 +58,9 @@ export function HomePage() {
     const id = packageId.trim();
     if (!id || !isPackage) return;
     navigate({
-      to: "/d/$network/$packageId",
-      params: { network, packageId: id },
+      to: "/d/$packageId",
+      params: { packageId: id },
+      search: { network },
     });
   }, [packageId, network, isPackage, navigate]);
 
