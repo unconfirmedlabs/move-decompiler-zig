@@ -12,7 +12,7 @@ interface DecompiledModule {
 }
 
 export function DecompilePage() {
-  const { packageId, network } = useParams({ from: "/decompile/$network/$packageId" });
+  const { packageId, network } = useParams({ from: "/d/$network/$packageId" });
   const [modules, setModules] = useState<DecompiledModule[]>([]);
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState("");

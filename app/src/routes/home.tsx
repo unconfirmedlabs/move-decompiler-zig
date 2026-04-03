@@ -58,7 +58,7 @@ export function HomePage() {
     const id = packageId.trim();
     if (!id || !isPackage) return;
     navigate({
-      to: "/decompile/$network/$packageId",
+      to: "/d/$network/$packageId",
       params: { network, packageId: id },
     });
   }, [packageId, network, isPackage, navigate]);
