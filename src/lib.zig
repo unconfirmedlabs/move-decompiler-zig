@@ -24,7 +24,7 @@ pub fn decompile(allocator: std.mem.Allocator, bytecode: []const u8) ![]u8 {
         if (fh.module != module.self_module_handle_idx) continue;
 
         if (fd.code) |code_unit| {
-            const fn_cfg = try cfg.buildCfg(allocator, code_unit.code);
+            const fn_cfg = try cfg.buildCfg(allocator, code_unit.code, code_unit.jump_tables);
             const dom = try cfg.computeDominators(allocator, &fn_cfg);
             const loops = try cfg.detectLoops(allocator, &fn_cfg, &dom);
             const node = try structure.structure(allocator, &fn_cfg, &dom, &loops);

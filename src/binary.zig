@@ -544,7 +544,7 @@ fn readCodeUnit(allocator: Allocator, reader: *Reader, version: u32) Error!types
                 if (jt_type != 0x1) return Error.InvalidJumpTableType;
                 const offsets = try allocator.alloc(types.CodeOffset, branch_count);
                 for (0..branch_count) |j| {
-                    offsets[j] = try reader.readU16LE();
+                    offsets[j] = try reader.readULEB128_u16();
                 }
                 jts[i] = .{ .head_enum = head_enum, .offsets = offsets };
             }

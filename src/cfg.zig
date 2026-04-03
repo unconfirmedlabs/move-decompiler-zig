@@ -36,7 +36,7 @@ pub const Cfg = struct {
 
 // ── CFG Builder ───────────────────────────────────────────────────────
 
-pub fn buildCfg(allocator: Allocator, code: []const types.Bytecode) !Cfg {
+pub fn buildCfg(allocator: Allocator, code: []const types.Bytecode, jump_tables: []const types.VariantJumpTable) !Cfg {
     if (code.len == 0) {
         const block = try allocator.create(BasicBlock);
         block.* = .{ .id = 0, .start = 0, .end = 0, .terminator = .ret };
@@ -70,8 +70,13 @@ pub fn buildCfg(allocator: Allocator, code: []const types.Bytecode) !Cfg {
             .ret, .abort => {
                 if (idx + 1 < code.len) try leaders.put(idx + 1, {});
             },
-            .variant_switch => {
-                // Jump table targets are resolved elsewhere; mark next as leader
+            .variant_switch => |jt_idx| {
+                // Register all jump table target offsets as leaders
+                if (jt_idx < jump_tables.len) {
+                    for (jump_tables[jt_idx].offsets) |target| {
+                        try leaders.put(target, {});
+                    }
+                }
                 if (idx + 1 < code.len) try leaders.put(idx + 1, {});
             },
             else => {},
@@ -119,6 +124,22 @@ pub fn buildCfg(allocator: Allocator, code: []const types.Bytecode) !Cfg {
                 const true_id = if (block_id + 1 < num_blocks) block_id + 1 else 0;
                 // br_false: if false goto target, else fall through
                 break :blk .{ .branch = .{ .then_id = true_id, .else_id = false_id } };
+            },
+            .variant_switch => |jt_idx| blk: {
+                if (jt_idx < jump_tables.len) {
+                    const jt = jump_tables[jt_idx];
+                    const targets = try allocator.alloc(BlockId, jt.offsets.len);
+                    for (jt.offsets, 0..) |target_offset, ti| {
+                        targets[ti] = offset_to_block.get(target_offset) orelse 0;
+                    }
+                    break :blk .{ .variant_switch = targets };
+                } else {
+                    // Fallthrough if jump table missing
+                    if (block_id + 1 < num_blocks)
+                        break :blk .{ .jump = block_id + 1 }
+                    else
+                        break :blk .ret;
+                }
             },
             .ret => .ret,
             .abort => .abort,
@@ -384,7 +405,7 @@ test "CFG: coin::total_supply has 1 block" {
     for (module.function_defs) |fd| {
         const fh = module.function_handles[fd.function];
         if (std.mem.eql(u8, module.identifiers[fh.name], "total_supply")) {
-            const cfg = try buildCfg(alloc, fd.code.?.code);
+            const cfg = try buildCfg(alloc, fd.code.?.code, fd.code.?.jump_tables);
             try testing.expectEqual(@as(usize, 1), cfg.blocks.len);
             try testing.expectEqual(Terminator.ret, cfg.blocks[0].terminator);
             return;
@@ -404,7 +425,7 @@ test "CFG: coin::divide_into_n has loops" {
     for (module.function_defs) |fd| {
         const fh = module.function_handles[fd.function];
         if (std.mem.eql(u8, module.identifiers[fh.name], "divide_into_n")) {
-            const cfg = try buildCfg(alloc, fd.code.?.code);
+            const cfg = try buildCfg(alloc, fd.code.?.code, fd.code.?.jump_tables);
             try testing.expect(cfg.blocks.len > 3);
 
             const dom = try computeDominators(alloc, &cfg);
@@ -427,7 +448,7 @@ test "Dominators: entry dominates all blocks" {
     for (module.function_defs) |fd| {
         if (fd.code) |code_unit| {
             if (code_unit.code.len > 5) {
-                const cfg = try buildCfg(alloc, code_unit.code);
+                const cfg = try buildCfg(alloc, code_unit.code, code_unit.jump_tables);
                 const dom = try computeDominators(alloc, &cfg);
                 // Entry should dominate all blocks
                 for (cfg.blocks) |block| {

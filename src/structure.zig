@@ -349,7 +349,7 @@ test "structure: simple function produces block node" {
     for (module.function_defs) |fd| {
         const fh = module.function_handles[fd.function];
         if (std.mem.eql(u8, module.identifiers[fh.name], "total_supply")) {
-            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code);
+            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code, fd.code.?.jump_tables);
             const dom = try cfg_mod.computeDominators(alloc, &cfg);
             const loops = try cfg_mod.detectLoops(alloc, &cfg, &dom);
             const result = try structure(alloc, &cfg, &dom, &loops);
@@ -371,7 +371,7 @@ test "structure: function with branches produces if_else" {
     for (module.function_defs) |fd| {
         const fh = module.function_handles[fd.function];
         if (std.mem.eql(u8, module.identifiers[fh.name], "create_currency")) {
-            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code);
+            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code, fd.code.?.jump_tables);
             if (cfg.blocks.len > 1) {
                 const dom = try cfg_mod.computeDominators(alloc, &cfg);
                 const loops = try cfg_mod.detectLoops(alloc, &cfg, &dom);
@@ -396,7 +396,7 @@ test "structure: divide_into_n produces while loop" {
     for (module.function_defs) |fd| {
         const fh = module.function_handles[fd.function];
         if (std.mem.eql(u8, module.identifiers[fh.name], "divide_into_n")) {
-            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code);
+            const cfg = try cfg_mod.buildCfg(alloc, fd.code.?.code, fd.code.?.jump_tables);
             const dom = try cfg_mod.computeDominators(alloc, &cfg);
             const loops = try cfg_mod.detectLoops(alloc, &cfg, &dom);
             const result = try structure(alloc, &cfg, &dom, &loops);
