@@ -27,5 +27,6 @@ pub fn main() !void {
         return;
     };
 
-    std.debug.print("{s}", .{output});
+    const stdout = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
+    try stdout.writeAll(output);
 }

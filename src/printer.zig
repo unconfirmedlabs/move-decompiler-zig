@@ -219,7 +219,9 @@ fn printFunction(
 
     if (structured_opt) |node| {
         const param_count: u16 = @intCast(param_sig.tokens.len);
-        try printNode(out, allocator, module, cfg_opt.?, fd.code.?.code, param_count, node, 2);
+        const has_return = module.signatures[module.function_handles[fd.function].return_].tokens.len > 0;
+        var assigned = expr.AssignedSet.init(allocator);
+        try printNode(out, allocator, module, cfg_opt.?, fd.code.?.code, param_count, node, 2, &assigned, has_return);
     } else if (fd.code) |code_unit| {
         // Fallback: print raw bytecode
         for (code_unit.code, 0..) |instr, i| {
@@ -243,7 +245,9 @@ fn printNode(
     param_count: u16,
     node: *const ast.Node,
     indent: usize,
-) !void {
+    assigned: *expr.AssignedSet,
+    has_return: bool,
+) anyerror!void {
     switch (node.*) {
         .empty => {},
         .block => |block_id| {
@@ -254,16 +258,23 @@ fn printNode(
                 else => block.end,
             };
             if (end <= block.start) return;
-            const stmts = expr.renderBlock(allocator, module, code, block.start, end, param_count) catch return;
-            for (stmts) |stmt| {
+            const stmts = expr.renderBlockWithAssigned(allocator, module, code, block.start, end, param_count, assigned) catch return;
+            for (stmts, 0..) |stmt, si| {
                 try writeIndent(out, allocator, indent);
                 try out.appendSlice(allocator, stmt);
-                try out.appendSlice(allocator, ";\n");
+                // Omit semicolon on last expression of a returning function at top-level indent
+                if (has_return and indent == 2 and si == stmts.len - 1 and isLastNode(node)) {
+                    try out.append(allocator, '\n');
+                } else {
+                    try out.appendSlice(allocator, ";\n");
+                }
             }
         },
         .seq => |nodes| {
-            for (nodes) |n| {
-                try printNode(out, allocator, module, cfg, code, param_count, n, indent);
+            for (nodes, 0..) |n, ni| {
+                // For the last node in a seq, propagate has_return
+                const is_last = ni == nodes.len - 1;
+                try printNode(out, allocator, module, cfg, code, param_count, n, indent, assigned, has_return and is_last);
             }
         },
         .if_else => |ie| {
@@ -271,7 +282,7 @@ fn printNode(
             // Last expression on the stack becomes the condition; earlier statements are preamble.
             const cond_block = cfg.blocks[ie.cond_block];
             const cond_end = if (cond_block.end > cond_block.start) cond_block.end - 1 else cond_block.end;
-            const all_stmts = expr.renderBlock(allocator, module, code, cond_block.start, cond_end, param_count) catch &.{};
+            const all_stmts = expr.renderBlockWithAssigned(allocator, module, code, cond_block.start, cond_end, param_count, assigned) catch &.{};
 
             // All but last are preamble statements
             if (all_stmts.len > 1) {
@@ -287,11 +298,11 @@ fn printNode(
             try out.appendSlice(allocator, "if (");
             try out.appendSlice(allocator, cond_expr);
             try out.appendSlice(allocator, ") {\n");
-            try printNode(out, allocator, module, cfg, code, param_count, ie.then_branch, indent + 1);
+            try printNode(out, allocator, module, cfg, code, param_count, ie.then_branch, indent + 1, assigned, false);
             if (ie.else_branch) |eb| {
                 try writeIndent(out, allocator, indent);
                 try out.appendSlice(allocator, "} else {\n");
-                try printNode(out, allocator, module, cfg, code, param_count, eb, indent + 1);
+                try printNode(out, allocator, module, cfg, code, param_count, eb, indent + 1, assigned, false);
             }
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "}\n");
@@ -299,7 +310,7 @@ fn printNode(
         .while_loop => |wl| {
             const cond_block = cfg.blocks[wl.cond_block];
             const cond_end = if (cond_block.end > cond_block.start) cond_block.end - 1 else cond_block.end;
-            const all_stmts = expr.renderBlock(allocator, module, code, cond_block.start, cond_end, param_count) catch &.{};
+            const all_stmts = expr.renderBlockWithAssigned(allocator, module, code, cond_block.start, cond_end, param_count, assigned) catch &.{};
             if (all_stmts.len > 1) {
                 for (all_stmts[0 .. all_stmts.len - 1]) |stmt| {
                     try writeIndent(out, allocator, indent);
@@ -313,14 +324,14 @@ fn printNode(
             try out.appendSlice(allocator, "while (");
             try out.appendSlice(allocator, cond_expr);
             try out.appendSlice(allocator, ") {\n");
-            try printNode(out, allocator, module, cfg, code, param_count, wl.body, indent + 1);
+            try printNodeStripTrailingContinue(out, allocator, module, cfg, code, param_count, wl.body, indent + 1, assigned);
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "}\n");
         },
         .loop_ => |lp| {
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "loop {\n");
-            try printNode(out, allocator, module, cfg, code, param_count, lp.body, indent + 1);
+            try printNodeStripTrailingContinue(out, allocator, module, cfg, code, param_count, lp.body, indent + 1, assigned);
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "}\n");
         },
@@ -329,6 +340,7 @@ fn printNode(
             try out.appendSlice(allocator, "break;\n");
         },
         .continue_ => {
+            // Skip — trailing continues are removed by isTrailingContinue check below
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "continue;\n");
         },
@@ -336,6 +348,39 @@ fn printNode(
             try writeIndent(out, allocator, indent);
             try out.appendSlice(allocator, "return;\n");
         },
+    }
+}
+
+/// Returns true if this node is a leaf block (for semicolon omission on return values)
+fn isLastNode(node: *const ast.Node) bool {
+    return node.* == .block;
+}
+
+/// Print a loop body, stripping a trailing `continue` which is always redundant.
+fn printNodeStripTrailingContinue(
+    out: *Writer,
+    allocator: Allocator,
+    module: *const types.CompiledModule,
+    cfg: *const cfg_mod.Cfg,
+    code: []const types.Bytecode,
+    param_count: u16,
+    node: *const ast.Node,
+    indent: usize,
+    assigned: *expr.AssignedSet,
+) anyerror!void {
+    switch (node.*) {
+        .seq => |nodes| {
+            for (nodes, 0..) |n, ni| {
+                if (ni == nodes.len - 1) {
+                    // Recurse to strip trailing continue from last element
+                    try printNodeStripTrailingContinue(out, allocator, module, cfg, code, param_count, n, indent, assigned);
+                } else {
+                    try printNode(out, allocator, module, cfg, code, param_count, n, indent, assigned, false);
+                }
+            }
+        },
+        .continue_ => {}, // Trailing continue — skip
+        else => try printNode(out, allocator, module, cfg, code, param_count, node, indent, assigned, false),
     }
 }
 

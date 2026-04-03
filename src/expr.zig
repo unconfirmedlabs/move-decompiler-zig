@@ -3,6 +3,10 @@ const types = @import("types.zig");
 const Allocator = std.mem.Allocator;
 const Writer = std.ArrayList(u8);
 
+/// Set of locals that have been declared with `let`. Shared across
+/// all blocks in a function so subsequent stores become assignments.
+pub const AssignedSet = std.AutoHashMap(u8, void);
+
 /// Simulate the stack machine for a range of bytecode instructions and
 /// produce readable Move-like expression strings, one per statement.
 pub fn renderBlock(
@@ -13,12 +17,22 @@ pub fn renderBlock(
     end: u16,
     param_count: u16,
 ) ![]const []const u8 {
+    var owned_assigned = AssignedSet.init(allocator);
+    return renderBlockWithAssigned(allocator, module, code, start, end, param_count, &owned_assigned);
+}
+
+/// Like renderBlock but uses a shared assigned set for tracking let bindings.
+pub fn renderBlockWithAssigned(
+    allocator: Allocator,
+    module: *const types.CompiledModule,
+    code: []const types.Bytecode,
+    start: u16,
+    end: u16,
+    param_count: u16,
+    assigned: *AssignedSet,
+) ![]const []const u8 {
     var stack = std.ArrayList([]const u8){};
     var statements = std.ArrayList([]const u8){};
-
-    // Track which locals have been assigned for let bindings
-    var assigned = std.AutoHashMap(u8, void).init(allocator);
-    defer assigned.deinit();
 
     var i: u16 = start;
     while (i < end) : (i += 1) {
@@ -83,7 +97,14 @@ pub fn renderBlock(
             // ── Refs ─────────────────────────────────────────────
             .read_ref => {
                 const r = pop(&stack);
-                try stack.append(allocator, try fmt(allocator, "*{s}", .{r}));
+                // Cancel *&expr → expr and *&mut expr → expr
+                if (std.mem.startsWith(u8, r, "&mut ")) {
+                    try stack.append(allocator, r[5..]);
+                } else if (r.len > 0 and r[0] == '&') {
+                    try stack.append(allocator, r[1..]);
+                } else {
+                    try stack.append(allocator, try fmt(allocator, "*{s}", .{r}));
+                }
             },
             .write_ref => {
                 const val = pop(&stack);
@@ -422,6 +443,22 @@ fn renderConstant(allocator: Allocator, module: *const types.CompiledModule, idx
     switch (c.type_.*) {
         .bool => return if (data.len > 0 and data[0] != 0) "true" else "false",
         .u8 => return if (data.len >= 1) fmt(allocator, "{}u8", .{data[0]}) else "0u8",
+        .u16 => {
+            if (data.len >= 2) {
+                var val: u16 = 0;
+                for (0..2) |j| val |= @as(u16, data[j]) << @intCast(j * 8);
+                return fmt(allocator, "{}u16", .{val});
+            }
+            return "0u16";
+        },
+        .u32 => {
+            if (data.len >= 4) {
+                var val: u32 = 0;
+                for (0..4) |j| val |= @as(u32, data[j]) << @intCast(j * 8);
+                return fmt(allocator, "{}u32", .{val});
+            }
+            return "0u32";
+        },
         .u64 => {
             if (data.len >= 8) {
                 var val: u64 = 0;
@@ -429,6 +466,22 @@ fn renderConstant(allocator: Allocator, module: *const types.CompiledModule, idx
                 return fmt(allocator, "{}", .{val});
             }
             return "0";
+        },
+        .u128 => {
+            if (data.len >= 16) {
+                var val: u128 = 0;
+                for (0..16) |j| val |= @as(u128, data[j]) << @intCast(j * 8);
+                return fmt(allocator, "{}u128", .{val});
+            }
+            return "0u128";
+        },
+        .u256 => {
+            if (data.len >= 32) {
+                var val: u256 = 0;
+                for (0..32) |j| val |= @as(u256, data[j]) << @intCast(j * 8);
+                return fmt(allocator, "{}u256", .{val});
+            }
+            return "0u256";
         },
         .address => {
             if (data.len >= 32) {
@@ -477,6 +530,7 @@ fn renderConstant(allocator: Allocator, module: *const types.CompiledModule, idx
             }
             return "/* const_vec */";
         },
+        .signer => return "/* signer_const */",
         else => return "/* const */",
     }
 }
